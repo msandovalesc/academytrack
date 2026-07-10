@@ -1,0 +1,22 @@
+# Netlify site configuration for AcademyTrack
+# Static frontend lives in public/, serverless API in netlify/functions/.
+
+[build]
+  publish = "public"
+  functions = "netlify/functions"
+
+[functions]
+  # Bundle dependencies (hono, jose, bcryptjs, neon driver) with esbuild.
+  node_bundler = "esbuild"
+
+[dev]
+  # `netlify dev` serves public/ and the functions on one port.
+  publish = "public"
+  targetPort = 8888
+
+# The API function declares its own route via `export const config = { path: "/api/*" }`,
+# so no manual redirect is needed. This fallback keeps client-side view state on refresh.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

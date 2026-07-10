@@ -1,0 +1,480 @@
+// AcademyTrack API — single Netlify Function routing all of /api/* via Hono.
+// Auth: self-hosted email/password (bcrypt) + JWT session in an httpOnly cookie.
+// DB:   Netlify DB (Neon Postgres) via @netlify/neon (auto-reads NETLIFY_DATABASE_URL).
+import { Hono } from 'hono';
+import { getCookie, setCookie, deleteCookie } from 'hono/cookie';
+import { neon } from '@netlify/neon';
+import bcrypt from 'bcryptjs';
+import { SignJWT, jwtVerify } from 'jose';
+
+type User = { id: number; email: string; name: string; avatar: string | null; role: string };
+type Vars = { sql: ReturnType<typeof neon>; user: User | null };
+
+const COOKIE = 'at_session';
+const MAX_AGE = 60 * 60 * 24 * 7; // 7 days
+
+const app = new Hono<{ Variables: Vars }>().basePath('/api');
+
+// ---------- helpers ----------
+function secretKey() {
+  const s = process.env.JWT_SECRET;
+  if (!s) throw new Error('JWT_SECRET is not set');
+  return new TextEncoder().encode(s);
+}
+
+async function signSession(userId: number) {
+  return new SignJWT({ uid: userId })
+    .setProtectedHeader({ alg: 'HS256' })
+    .setIssuedAt()
+    .setExpirationTime('7d')
+    .sign(secretKey());
+}
+
+async function setSession(c: any, userId: number) {
+  const token = await signSession(userId);
+  const secure = new URL(c.req.url).protocol === 'https:';
+  setCookie(c, COOKIE, token, {
+    httpOnly: true,
+    sameSite: 'Lax',
+    secure,
+    path: '/',
+    maxAge: MAX_AGE,
+  });
+}
+
+const publicUser = (u: any): User => ({
+  id: u.id, email: u.email, name: u.name, avatar: u.avatar, role: u.role,
+});
+
+// ---------- middleware: attach db + resolve current user from cookie ----------
+app.use('*', async (c, next) => {
+  const sql = neon();
+  c.set('sql', sql);
+  c.set('user', null);
+  const token = getCookie(c, COOKIE);
+  if (token) {
+    try {
+      const { payload } = await jwtVerify(token, secretKey());
+      const rows = await sql`SELECT id, email, name, avatar, role FROM users WHERE id = ${payload.uid as number}`;
+      if (rows[0]) c.set('user', publicUser(rows[0]));
+    } catch {
+      /* invalid/expired token — treat as anonymous */
+    }
+  }
+  await next();
+});
+
+const requireAuth = async (c: any, next: any) => {
+  if (!c.get('user')) return c.json({ error: 'Not authenticated' }, 401);
+  await next();
+};
+const requireAdmin = async (c: any, next: any) => {
+  const u = c.get('user');
+  if (!u) return c.json({ error: 'Not authenticated' }, 401);
+  if (u.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
+  await next();
+};
+
+// =====================================================================
+// AUTH
+// =====================================================================
+app.get('/health', (c) => c.json({ ok: true }));
+
+app.post('/auth/register', async (c) => {
+  const sql = c.get('sql');
+  const body = await c.req.json().catch(() => ({}));
+  const email = String(body.email || '').trim().toLowerCase();
+  const name = String(body.name || '').trim();
+  const password = String(body.password || '');
+  if (!email || !name || password.length < 6) {
+    return c.json({ error: 'Name, email, and a password of at least 6 characters are required.' }, 400);
+  }
+  const existing = await sql`SELECT id FROM users WHERE email = ${email}`;
+  if (existing[0]) return c.json({ error: 'An account with that email already exists.' }, 409);
+
+  const hash = await bcrypt.hash(password, 10);
+  const [{ count }] = await sql`SELECT count(*)::int AS count FROM users`;
+  const role = count === 0 ? 'admin' : 'learner'; // first-ever user is the admin
+  const avatars = ['🦊', '🐼', '🦁', '🐸', '🦋', '🐺', '🦅', '🐬', '🦄', '🐯', '🦉', '🐙'];
+  const avatar = avatars[count % avatars.length];
+
+  const [u] = await sql`
+    INSERT INTO users (email, password_hash, name, role, avatar)
+    VALUES (${email}, ${hash}, ${name}, ${role}, ${avatar})
+    RETURNING id, email, name, avatar, role`;
+  await setSession(c, u.id);
+  return c.json({ user: publicUser(u) });
+});
+
+app.post('/auth/login', async (c) => {
+  const sql = c.get('sql');
+  const body = await c.req.json().catch(() => ({}));
+  const email = String(body.email || '').trim().toLowerCase();
+  const password = String(body.password || '');
+  const [u] = await sql`SELECT * FROM users WHERE email = ${email}`;
+  if (!u || !(await bcrypt.compare(password, u.password_hash))) {
+    return c.json({ error: 'Invalid email or password.' }, 401);
+  }
+  await setSession(c, u.id);
+  return c.json({ user: publicUser(u) });
+});
+
+app.post('/auth/logout', (c) => {
+  deleteCookie(c, COOKIE, { path: '/' });
+  return c.json({ ok: true });
+});
+
+app.get('/auth/me', requireAuth, (c) => c.json({ user: c.get('user') }));
+
+// =====================================================================
+// PATHS + CONTENT
+// =====================================================================
+
+// List all paths with totals + whether current user is enrolled + member count.
+app.get('/paths', requireAuth, async (c) => {
+  const sql = c.get('sql');
+  const uid = c.get('user')!.id;
+  const rows = await sql`
+    SELECT p.*,
+      (SELECT count(*)::int FROM modules m WHERE m.path_id = p.id) AS module_count,
+      (SELECT count(*)::int FROM topics t JOIN modules m ON m.id = t.module_id WHERE m.path_id = p.id) AS topic_count,
+      (SELECT count(*)::int FROM tasks tk JOIN topics t ON t.id = tk.topic_id JOIN modules m ON m.id = t.module_id WHERE m.path_id = p.id) AS task_count,
+      (SELECT count(*)::int FROM deliverables d WHERE d.path_id = p.id) AS deliverable_count,
+      (SELECT count(*)::int FROM enrollments e WHERE e.path_id = p.id) AS member_count,
+      EXISTS (SELECT 1 FROM enrollments e WHERE e.path_id = p.id AND e.user_id = ${uid}) AS enrolled
+    FROM learning_paths p
+    ORDER BY p.created_at ASC, p.id ASC`;
+  return c.json({ paths: rows });
+});
+
+// Full content tree for a path + current user's progress (done ids).
+app.get('/paths/:id', requireAuth, async (c) => {
+  const sql = c.get('sql');
+  const uid = c.get('user')!.id;
+  const id = Number(c.req.param('id'));
+  const [path] = await sql`SELECT * FROM learning_paths WHERE id = ${id}`;
+  if (!path) return c.json({ error: 'Path not found' }, 404);
+
+  const modules = await sql`SELECT * FROM modules WHERE path_id = ${id} ORDER BY position, id`;
+  const topics = await sql`
+    SELECT t.* FROM topics t JOIN modules m ON m.id = t.module_id
+    WHERE m.path_id = ${id} ORDER BY t.position, t.id`;
+  const tasks = await sql`
+    SELECT tk.* FROM tasks tk
+    JOIN topics t ON t.id = tk.topic_id JOIN modules m ON m.id = t.module_id
+    WHERE m.path_id = ${id} ORDER BY tk.position, tk.id`;
+  const deliverables = await sql`SELECT * FROM deliverables WHERE path_id = ${id} ORDER BY position, id`;
+
+  const tasksByTopic: Record<number, any[]> = {};
+  for (const tk of tasks) (tasksByTopic[tk.topic_id] ||= []).push(tk);
+  const topicsByModule: Record<number, any[]> = {};
+  for (const t of topics) {
+    t.tasks = tasksByTopic[t.id] || [];
+    (topicsByModule[t.module_id] ||= []).push(t);
+  }
+  for (const m of modules) m.topics = topicsByModule[m.id] || [];
+
+  const doneTopics = await sql`
+    SELECT tp.topic_id FROM topic_progress tp
+    JOIN topics t ON t.id = tp.topic_id JOIN modules m ON m.id = t.module_id
+    WHERE m.path_id = ${id} AND tp.user_id = ${uid} AND tp.done`;
+  const doneTasks = await sql`
+    SELECT tp.task_id FROM task_progress tp
+    JOIN tasks tk ON tk.id = tp.task_id JOIN topics t ON t.id = tk.topic_id JOIN modules m ON m.id = t.module_id
+    WHERE m.path_id = ${id} AND tp.user_id = ${uid} AND tp.done`;
+  const doneDelivs = await sql`
+    SELECT dp.deliverable_id FROM deliverable_progress dp
+    JOIN deliverables d ON d.id = dp.deliverable_id
+    WHERE d.path_id = ${id} AND dp.user_id = ${uid} AND dp.done`;
+
+  return c.json({
+    path,
+    modules,
+    deliverables,
+    progress: {
+      topics: doneTopics.map((r: any) => r.topic_id),
+      tasks: doneTasks.map((r: any) => r.task_id),
+      deliverables: doneDelivs.map((r: any) => r.deliverable_id),
+    },
+  });
+});
+
+app.post('/paths', requireAdmin, async (c) => {
+  const sql = c.get('sql');
+  const b = await c.req.json().catch(() => ({}));
+  if (!b.name) return c.json({ error: 'Name is required' }, 400);
+  const [p] = await sql`
+    INSERT INTO learning_paths (name, description, icon, color, created_by)
+    VALUES (${b.name}, ${b.description ?? null}, ${b.icon ?? null}, ${b.color ?? null}, ${c.get('user')!.id})
+    RETURNING *`;
+  return c.json({ path: p });
+});
+
+app.put('/paths/:id', requireAdmin, async (c) => {
+  const sql = c.get('sql');
+  const id = Number(c.req.param('id'));
+  const b = await c.req.json().catch(() => ({}));
+  const [p] = await sql`
+    UPDATE learning_paths SET
+      name = COALESCE(${b.name ?? null}, name),
+      description = COALESCE(${b.description ?? null}, description),
+      icon = COALESCE(${b.icon ?? null}, icon),
+      color = COALESCE(${b.color ?? null}, color)
+    WHERE id = ${id} RETURNING *`;
+  if (!p) return c.json({ error: 'Path not found' }, 404);
+  return c.json({ path: p });
+});
+
+app.delete('/paths/:id', requireAdmin, async (c) => {
+  const sql = c.get('sql');
+  await sql`DELETE FROM learning_paths WHERE id = ${Number(c.req.param('id'))}`;
+  return c.json({ ok: true });
+});
+
+// ---- Modules ----
+app.post('/paths/:id/modules', requireAdmin, async (c) => {
+  const sql = c.get('sql');
+  const pathId = Number(c.req.param('id'));
+  const b = await c.req.json().catch(() => ({}));
+  if (!b.name) return c.json({ error: 'Name is required' }, 400);
+  const [{ next }] = await sql`SELECT COALESCE(max(position) + 1, 0)::int AS next FROM modules WHERE path_id = ${pathId}`;
+  const [m] = await sql`
+    INSERT INTO modules (path_id, position, name, icon, color)
+    VALUES (${pathId}, ${b.position ?? next}, ${b.name}, ${b.icon ?? null}, ${b.color ?? null})
+    RETURNING *`;
+  return c.json({ module: m });
+});
+
+app.put('/modules/:id', requireAdmin, async (c) => {
+  const sql = c.get('sql');
+  const id = Number(c.req.param('id'));
+  const b = await c.req.json().catch(() => ({}));
+  const [m] = await sql`
+    UPDATE modules SET
+      name = COALESCE(${b.name ?? null}, name),
+      icon = COALESCE(${b.icon ?? null}, icon),
+      color = COALESCE(${b.color ?? null}, color),
+      position = COALESCE(${b.position ?? null}, position)
+    WHERE id = ${id} RETURNING *`;
+  if (!m) return c.json({ error: 'Module not found' }, 404);
+  return c.json({ module: m });
+});
+
+app.delete('/modules/:id', requireAdmin, async (c) => {
+  const sql = c.get('sql');
+  await sql`DELETE FROM modules WHERE id = ${Number(c.req.param('id'))}`;
+  return c.json({ ok: true });
+});
+
+// ---- Topics ----
+app.post('/modules/:id/topics', requireAdmin, async (c) => {
+  const sql = c.get('sql');
+  const moduleId = Number(c.req.param('id'));
+  const b = await c.req.json().catch(() => ({}));
+  if (!b.name) return c.json({ error: 'Name is required' }, 400);
+  const [{ next }] = await sql`SELECT COALESCE(max(position) + 1, 0)::int AS next FROM topics WHERE module_id = ${moduleId}`;
+  const [t] = await sql`
+    INSERT INTO topics (module_id, position, name)
+    VALUES (${moduleId}, ${b.position ?? next}, ${b.name}) RETURNING *`;
+  return c.json({ topic: t });
+});
+
+app.put('/topics/:id', requireAdmin, async (c) => {
+  const sql = c.get('sql');
+  const id = Number(c.req.param('id'));
+  const b = await c.req.json().catch(() => ({}));
+  const [t] = await sql`
+    UPDATE topics SET
+      name = COALESCE(${b.name ?? null}, name),
+      position = COALESCE(${b.position ?? null}, position)
+    WHERE id = ${id} RETURNING *`;
+  if (!t) return c.json({ error: 'Topic not found' }, 404);
+  return c.json({ topic: t });
+});
+
+app.delete('/topics/:id', requireAdmin, async (c) => {
+  const sql = c.get('sql');
+  await sql`DELETE FROM topics WHERE id = ${Number(c.req.param('id'))}`;
+  return c.json({ ok: true });
+});
+
+// ---- Tasks ----
+app.post('/topics/:id/tasks', requireAdmin, async (c) => {
+  const sql = c.get('sql');
+  const topicId = Number(c.req.param('id'));
+  const b = await c.req.json().catch(() => ({}));
+  if (!b.description) return c.json({ error: 'Description is required' }, 400);
+  const [{ next }] = await sql`SELECT COALESCE(max(position) + 1, 0)::int AS next FROM tasks WHERE topic_id = ${topicId}`;
+  const [t] = await sql`
+    INSERT INTO tasks (topic_id, position, description)
+    VALUES (${topicId}, ${b.position ?? next}, ${b.description}) RETURNING *`;
+  return c.json({ task: t });
+});
+
+app.put('/tasks/:id', requireAdmin, async (c) => {
+  const sql = c.get('sql');
+  const id = Number(c.req.param('id'));
+  const b = await c.req.json().catch(() => ({}));
+  const [t] = await sql`
+    UPDATE tasks SET
+      description = COALESCE(${b.description ?? null}, description),
+      position = COALESCE(${b.position ?? null}, position)
+    WHERE id = ${id} RETURNING *`;
+  if (!t) return c.json({ error: 'Task not found' }, 404);
+  return c.json({ task: t });
+});
+
+app.delete('/tasks/:id', requireAdmin, async (c) => {
+  const sql = c.get('sql');
+  await sql`DELETE FROM tasks WHERE id = ${Number(c.req.param('id'))}`;
+  return c.json({ ok: true });
+});
+
+// ---- Deliverables ----
+app.post('/paths/:id/deliverables', requireAdmin, async (c) => {
+  const sql = c.get('sql');
+  const pathId = Number(c.req.param('id'));
+  const b = await c.req.json().catch(() => ({}));
+  if (!b.title) return c.json({ error: 'Title is required' }, 400);
+  const [{ next }] = await sql`SELECT COALESCE(max(position) + 1, 0)::int AS next FROM deliverables WHERE path_id = ${pathId}`;
+  const [d] = await sql`
+    INSERT INTO deliverables (path_id, module_id, position, title, description)
+    VALUES (${pathId}, ${b.module_id ?? null}, ${b.position ?? next}, ${b.title}, ${b.description ?? null})
+    RETURNING *`;
+  return c.json({ deliverable: d });
+});
+
+app.put('/deliverables/:id', requireAdmin, async (c) => {
+  const sql = c.get('sql');
+  const id = Number(c.req.param('id'));
+  const b = await c.req.json().catch(() => ({}));
+  const [d] = await sql`
+    UPDATE deliverables SET
+      title = COALESCE(${b.title ?? null}, title),
+      description = COALESCE(${b.description ?? null}, description),
+      module_id = COALESCE(${b.module_id ?? null}, module_id),
+      position = COALESCE(${b.position ?? null}, position)
+    WHERE id = ${id} RETURNING *`;
+  if (!d) return c.json({ error: 'Deliverable not found' }, 404);
+  return c.json({ deliverable: d });
+});
+
+app.delete('/deliverables/:id', requireAdmin, async (c) => {
+  const sql = c.get('sql');
+  await sql`DELETE FROM deliverables WHERE id = ${Number(c.req.param('id'))}`;
+  return c.json({ ok: true });
+});
+
+// =====================================================================
+// ENROLLMENT + MEMBER PROGRESS
+// =====================================================================
+app.post('/paths/:id/enroll', requireAuth, async (c) => {
+  const sql = c.get('sql');
+  await sql`
+    INSERT INTO enrollments (user_id, path_id) VALUES (${c.get('user')!.id}, ${Number(c.req.param('id'))})
+    ON CONFLICT (user_id, path_id) DO NOTHING`;
+  return c.json({ ok: true });
+});
+
+app.delete('/paths/:id/enroll', requireAuth, async (c) => {
+  const sql = c.get('sql');
+  await sql`DELETE FROM enrollments WHERE user_id = ${c.get('user')!.id} AND path_id = ${Number(c.req.param('id'))}`;
+  return c.json({ ok: true });
+});
+
+// Every enrolled user's aggregated progress for a path (dashboard + leaderboard).
+app.get('/paths/:id/members', requireAuth, async (c) => {
+  const sql = c.get('sql');
+  const id = Number(c.req.param('id'));
+  const [totals] = await sql`
+    SELECT
+      (SELECT count(*)::int FROM topics t JOIN modules m ON m.id = t.module_id WHERE m.path_id = ${id}) AS topics,
+      (SELECT count(*)::int FROM tasks tk JOIN topics t ON t.id = tk.topic_id JOIN modules m ON m.id = t.module_id WHERE m.path_id = ${id}) AS tasks,
+      (SELECT count(*)::int FROM deliverables d WHERE d.path_id = ${id}) AS deliverables`;
+  const members = await sql`
+    SELECT u.id, u.name, u.email, u.avatar,
+      (SELECT count(*)::int FROM topic_progress tp JOIN topics t ON t.id = tp.topic_id JOIN modules m ON m.id = t.module_id
+        WHERE m.path_id = ${id} AND tp.user_id = u.id AND tp.done) AS topics_done,
+      (SELECT count(*)::int FROM task_progress tp JOIN tasks tk ON tk.id = tp.task_id JOIN topics t ON t.id = tk.topic_id JOIN modules m ON m.id = t.module_id
+        WHERE m.path_id = ${id} AND tp.user_id = u.id AND tp.done) AS tasks_done,
+      (SELECT count(*)::int FROM deliverable_progress dp JOIN deliverables d ON d.id = dp.deliverable_id
+        WHERE d.path_id = ${id} AND dp.user_id = u.id AND dp.done) AS deliverables_done
+    FROM users u JOIN enrollments e ON e.user_id = u.id
+    WHERE e.path_id = ${id}
+    ORDER BY u.name`;
+  return c.json({ totals, members });
+});
+
+// =====================================================================
+// PROGRESS TOGGLES
+// =====================================================================
+async function logActivity(sql: any, pathId: number, userId: number, type: string, detail: string) {
+  await sql`INSERT INTO activity (path_id, user_id, type, detail) VALUES (${pathId}, ${userId}, ${type}, ${detail})`;
+}
+
+app.post('/progress/topic', requireAuth, async (c) => {
+  const sql = c.get('sql');
+  const uid = c.get('user')!.id;
+  const b = await c.req.json().catch(() => ({}));
+  const topicId = Number(b.topic_id);
+  const done = !!b.done;
+  const [info] = await sql`
+    SELECT m.path_id, t.name FROM topics t JOIN modules m ON m.id = t.module_id WHERE t.id = ${topicId}`;
+  if (!info) return c.json({ error: 'Topic not found' }, 404);
+  await sql`
+    INSERT INTO topic_progress (user_id, topic_id, done, updated_at) VALUES (${uid}, ${topicId}, ${done}, now())
+    ON CONFLICT (user_id, topic_id) DO UPDATE SET done = ${done}, updated_at = now()`;
+  if (done) await logActivity(sql, info.path_id, uid, 'topic', info.name);
+  return c.json({ ok: true });
+});
+
+app.post('/progress/task', requireAuth, async (c) => {
+  const sql = c.get('sql');
+  const uid = c.get('user')!.id;
+  const b = await c.req.json().catch(() => ({}));
+  const taskId = Number(b.task_id);
+  const done = !!b.done;
+  const [info] = await sql`
+    SELECT m.path_id, tk.description FROM tasks tk
+    JOIN topics t ON t.id = tk.topic_id JOIN modules m ON m.id = t.module_id WHERE tk.id = ${taskId}`;
+  if (!info) return c.json({ error: 'Task not found' }, 404);
+  await sql`
+    INSERT INTO task_progress (user_id, task_id, done, updated_at) VALUES (${uid}, ${taskId}, ${done}, now())
+    ON CONFLICT (user_id, task_id) DO UPDATE SET done = ${done}, updated_at = now()`;
+  if (done) await logActivity(sql, info.path_id, uid, 'task', (info.description || '').slice(0, 80));
+  return c.json({ ok: true });
+});
+
+app.post('/progress/deliverable', requireAuth, async (c) => {
+  const sql = c.get('sql');
+  const uid = c.get('user')!.id;
+  const b = await c.req.json().catch(() => ({}));
+  const delivId = Number(b.deliverable_id);
+  const done = !!b.done;
+  const [info] = await sql`SELECT path_id, title FROM deliverables WHERE id = ${delivId}`;
+  if (!info) return c.json({ error: 'Deliverable not found' }, 404);
+  await sql`
+    INSERT INTO deliverable_progress (user_id, deliverable_id, done, updated_at) VALUES (${uid}, ${delivId}, ${done}, now())
+    ON CONFLICT (user_id, deliverable_id) DO UPDATE SET done = ${done}, updated_at = now()`;
+  if (done) await logActivity(sql, info.path_id, uid, 'deliverable', info.title);
+  return c.json({ ok: true });
+});
+
+// =====================================================================
+// ACTIVITY FEED
+// =====================================================================
+app.get('/paths/:id/activity', requireAuth, async (c) => {
+  const sql = c.get('sql');
+  const id = Number(c.req.param('id'));
+  const limit = Math.min(Number(c.req.query('limit')) || 30, 100);
+  const rows = await sql`
+    SELECT a.id, a.type, a.detail, a.created_at, u.name AS user_name, u.avatar AS user_avatar
+    FROM activity a JOIN users u ON u.id = a.user_id
+    WHERE a.path_id = ${id}
+    ORDER BY a.created_at DESC LIMIT ${limit}`;
+  return c.json({ activity: rows });
+});
+
+// ---------- Netlify Function entry ----------
+export const config = { path: '/api/*' };
+export default async (req: Request) => app.fetch(req);

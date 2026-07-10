@@ -1,0 +1,25 @@
+{
+  "name": "academytrack",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "AcademyTrack — track any learning path (paths, modules, topics, tasks, deliverables) with per-user progress. Netlify Functions + Netlify DB (Neon Postgres).",
+  "scripts": {
+    "dev": "netlify dev",
+    "migrate": "node --env-file-if-exists=.env db/migrate.mjs",
+    "seed": "node --env-file-if-exists=.env db/seed.mjs",
+    "setup": "npm run migrate && npm run seed",
+    "deploy": "netlify deploy --prod"
+  },
+  "dependencies": {
+    "@neondatabase/serverless": "^0.10.4",
+    "@netlify/neon": "^0.1.0",
+    "bcryptjs": "^2.4.3",
+    "hono": "^4.6.14",
+    "jose": "^5.9.6"
+  },
+  "devDependencies": {
+    "@netlify/functions": "^2.8.2",
+    "netlify-cli": "^17.38.0"
+  }
+}
