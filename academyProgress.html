@@ -1,0 +1,1781 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The SDET Journey</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+:root {
+  --bg: #0a0a0a; --bg-card: #141414; --bg-elevated: #1e1e1e;
+  --border: #2a2a2a; --border-light: #3a3a3a;
+  --text: #fff; --text-muted: #a0a0a0; --text-dim: #555;
+  --blue: #2563eb; --blue-dim: rgba(37,99,235,.12); --blue-border: rgba(37,99,235,.35); --blue-light: #60a5fa;
+  --green: #22c55e; --green-dim: rgba(34,197,94,.12); --green-border: rgba(34,197,94,.3);
+  --yellow: #eab308; --yellow-dim: rgba(234,179,8,.12);
+  --purple: #a855f7; --purple-dim: rgba(168,85,247,.12);
+  --red: #ef4444;
+  --radius: 12px;
+}
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;-webkit-font-smoothing:antialiased}
+button{cursor:pointer;font-family:inherit}
+
+.nav{display:flex;align-items:center;justify-content:space-between;padding:12px 24px;background:var(--bg-card);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:100}
+.nav-logo{font-size:15px;font-weight:700;letter-spacing:-.3px;display:flex;align-items:center;gap:8px}
+.nav-logo span.brand{background:var(--blue);color:#fff;border-radius:6px;padding:2px 8px;font-size:12px;font-weight:800;letter-spacing:.5px}
+.nav-logo span.team-name{background:var(--purple-dim);color:var(--purple);border:1px solid rgba(168,85,247,.3);border-radius:6px;padding:2px 8px;font-size:11px;font-weight:700;letter-spacing:.5px}
+.nav-actions{display:flex;gap:8px;flex-wrap:wrap}
+.btn{padding:8px 16px;border-radius:8px;font-size:13px;font-weight:600;border:none;transition:all .2s;letter-spacing:.2px}
+.btn-outline{background:transparent;border:1px solid var(--border);color:var(--text-muted)}
+.btn-outline:hover{border-color:var(--blue-border);color:var(--blue-light);background:var(--blue-dim)}
+.btn-primary{background:var(--blue);color:#fff}
+.btn-primary:hover{background:#1d4ed8}
+.btn-green{background:var(--green);color:#000;font-weight:700}
+.btn-green:hover{background:#16a34a}
+.btn-sm{padding:5px 12px;font-size:12px}
+
+.view{display:none;padding:24px;max-width:1100px;margin:0 auto}
+.view.active{display:block}
+
+.hero{text-align:center;padding:40px 0 32px}
+.hero h1{font-size:2.2rem;font-weight:800;letter-spacing:-1px;margin-bottom:8px;color:#fff}
+.hero p{color:var(--text-muted);font-size:1rem}
+
+.stats-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:28px}
+.stat-card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:18px;text-align:center}
+.stat-num{font-size:2rem;font-weight:800;letter-spacing:-1px}
+.stat-label{font-size:12px;color:var(--text-muted);margin-top:4px;font-weight:500;text-transform:uppercase;letter-spacing:.5px}
+
+.section-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+.section-title{font-size:14px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--text-dim)}
+.qa-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px;margin-bottom:32px}
+.qa-card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:18px;transition:all .2s;cursor:pointer}
+.qa-card:hover{border-color:var(--blue-border);background:var(--bg-elevated);transform:translateY(-1px)}
+.qa-card-top{display:flex;align-items:center;gap:12px;margin-bottom:14px}
+.qa-avatar{width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:800;flex-shrink:0}
+.qa-info{flex:1;min-width:0}
+.qa-name{font-size:14px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.qa-role{font-size:12px;color:var(--text-muted);margin-top:1px}
+.qa-pct{font-size:20px;font-weight:800;color:var(--blue-light);flex-shrink:0}
+.progress-bar{height:6px;background:var(--border);border-radius:3px;overflow:hidden;margin-bottom:10px}
+.progress-fill{height:100%;border-radius:3px;transition:width .4s ease}
+.qa-modules{display:flex;gap:4px;flex-wrap:wrap}
+.module-dot{width:8px;height:8px;border-radius:2px;flex-shrink:0}
+
+.badges-row{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.badge{font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;letter-spacing:.3px;text-transform:uppercase}
+.badge-gold{background:rgba(234,179,8,.2);color:var(--yellow);border:1px solid rgba(234,179,8,.3)}
+.badge-blue{background:var(--blue-dim);color:var(--blue-light);border:1px solid var(--blue-border)}
+.badge-green{background:var(--green-dim);color:var(--green);border:1px solid var(--green-border)}
+.badge-purple{background:var(--purple-dim);color:var(--purple);border:1px solid rgba(168,85,247,.3)}
+
+.back-btn{display:inline-flex;align-items:center;gap:6px;color:var(--text-muted);background:none;border:1px solid var(--border);border-radius:8px;padding:8px 14px;font-size:13px;font-weight:600;margin-bottom:24px;transition:all .2s}
+.back-btn:hover{color:var(--text);border-color:var(--blue-border);background:var(--blue-dim)}
+.profile-header{display:flex;align-items:center;gap:20px;margin-bottom:28px;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:24px;flex-wrap:wrap}
+.profile-avatar{width:64px;height:64px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:800;flex-shrink:0}
+.profile-name{font-size:1.5rem;font-weight:800;letter-spacing:-.5px}
+.profile-badges-section{width:100%;margin-top:12px;padding-top:12px;border-top:1px solid var(--border)}
+.profile-badges-section h4{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-dim);margin-bottom:8px}
+.profile-badge-grid{display:flex;gap:8px;flex-wrap:wrap}
+.profile-badge{display:flex;align-items:center;gap:6px;padding:6px 12px;border-radius:8px;font-size:12px;font-weight:600;border:1px solid}
+.profile-badge.earned{background:rgba(234,179,8,.1);border-color:rgba(234,179,8,.3);color:var(--yellow)}
+.profile-badge.locked{background:var(--bg-elevated);border-color:var(--border);color:var(--text-dim)}
+.big-progress{height:10px;background:var(--border);border-radius:5px;margin-top:16px;overflow:hidden;width:100%}
+.big-progress-fill{height:100%;border-radius:5px;transition:width .5s ease}
+.progress-label{display:flex;justify-content:space-between;font-size:12px;color:var(--text-muted);margin-top:4px}
+
+.module-section{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:12px;overflow:hidden}
+.module-header-row{display:flex;align-items:center;gap:12px;padding:16px 20px;cursor:pointer;user-select:none;transition:background .2s}
+.module-header-row:hover{background:var(--bg-elevated)}
+.module-chevron{transition:transform .3s;color:var(--text-dim);flex-shrink:0}
+.module-section.open .module-chevron{transform:rotate(90deg)}
+.module-num{font-size:11px;font-weight:700;font-family:monospace;color:var(--text-dim);background:var(--bg-elevated);padding:2px 6px;border-radius:4px;flex-shrink:0}
+.module-name{font-size:14px;font-weight:600;flex:1}
+.module-progress-text{font-size:12px;color:var(--text-muted);flex-shrink:0;font-family:monospace}
+.module-mini-bar{width:80px;height:4px;background:var(--border);border-radius:2px;overflow:hidden;flex-shrink:0}
+.module-mini-fill{height:100%;border-radius:2px;transition:width .3s}
+.module-body{display:none;border-top:1px solid var(--border);padding:8px 20px 16px}
+.module-section.open .module-body{display:block}
+.topic-row{display:flex;align-items:flex-start;gap:12px;padding:10px 0;border-bottom:1px solid var(--border)}
+.topic-row:last-child{border-bottom:none}
+.topic-check{width:20px;height:20px;border:1.5px solid var(--border-light);border-radius:5px;flex-shrink:0;cursor:pointer;display:flex;align-items:center;justify-content:center;margin-top:1px;transition:all .2s;background:transparent}
+.topic-check:hover{border-color:var(--blue-border)}
+.topic-check.done{background:var(--green);border-color:var(--green)}
+.topic-check.done::after{content:'\2713';color:#000;font-size:11px;font-weight:900}
+.topic-info{flex:1}
+.topic-name{font-size:13.5px;font-weight:500;transition:color .2s}
+.topic-row.done .topic-name{color:var(--text-muted);text-decoration:line-through;text-decoration-color:var(--text-dim)}
+.topic-module-tag{font-size:10px;color:var(--text-dim);margin-top:2px}
+.topic-xp{font-size:11px;color:var(--text-dim);flex-shrink:0;font-family:monospace}
+
+.exercise-group{margin-left:32px;margin-top:4px;margin-bottom:4px}
+.exercise-row{display:flex;align-items:flex-start;gap:8px;padding:4px 0}
+.exercise-check{width:16px;height:16px;border:1.5px solid var(--border-light);border-radius:4px;flex-shrink:0;cursor:pointer;display:flex;align-items:center;justify-content:center;margin-top:1px;transition:all .2s;background:transparent}
+.exercise-check:hover{border-color:var(--yellow)}
+.exercise-check.done{background:var(--yellow);border-color:var(--yellow)}
+.exercise-check.done::after{content:'\2713';color:#000;font-size:9px;font-weight:900}
+.exercise-text{font-size:12px;color:var(--text-muted);line-height:1.4}
+.exercise-row.done .exercise-text{color:var(--text-dim);text-decoration:line-through}
+.exercise-toggle{font-size:11px;color:var(--yellow);cursor:pointer;margin-left:32px;margin-top:2px;font-weight:600;user-select:none}
+.exercise-toggle:hover{text-decoration:underline}
+
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:200;display:none;align-items:center;justify-content:center;padding:16px}
+.modal-overlay.show{display:flex}
+.modal{background:var(--bg-card);border:1px solid var(--border);border-radius:16px;padding:28px;width:100%;max-width:440px}
+.modal h2{font-size:1.2rem;font-weight:700;margin-bottom:20px}
+.form-group{margin-bottom:16px}
+.form-label{font-size:12px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;display:block}
+.form-input{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 14px;color:var(--text);font-size:14px;font-family:inherit;outline:none;transition:border-color .2s}
+.form-input:focus{border-color:var(--blue-border)}
+.form-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:20px}
+
+.congrats-overlay{position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:300;display:none;align-items:center;justify-content:center;padding:16px}
+.congrats-overlay.show{display:flex}
+.congrats-modal{background:var(--bg-card);border:2px solid var(--yellow);border-radius:20px;padding:40px;text-align:center;max-width:420px;width:100%;animation:congratsPop .4s ease-out}
+@keyframes congratsPop{0%{transform:scale(.8);opacity:0}100%{transform:scale(1);opacity:1}}
+.congrats-icon{font-size:64px;margin-bottom:16px}
+.congrats-title{font-size:1.5rem;font-weight:800;color:var(--yellow);margin-bottom:8px}
+.congrats-sub{font-size:14px;color:var(--text-muted);margin-bottom:6px}
+.congrats-badge{display:inline-flex;align-items:center;gap:6px;margin-top:16px;padding:8px 20px;border-radius:10px;background:rgba(234,179,8,.15);border:1px solid rgba(234,179,8,.4);color:var(--yellow);font-size:14px;font-weight:700}
+.confetti{position:absolute;font-size:24px;animation:confettiFall 2s ease-out forwards;pointer-events:none}
+@keyframes confettiFall{0%{opacity:1;transform:translateY(-20px) rotate(0deg)}100%{opacity:0;transform:translateY(200px) rotate(720deg)}}
+
+.leaderboard{margin-bottom:32px}
+.lb-row{display:flex;align-items:center;gap:14px;padding:12px 16px;background:var(--bg-card);border:1px solid var(--border);border-radius:10px;margin-bottom:8px;transition:all .2s;cursor:pointer}
+.lb-row:hover{border-color:var(--border-light)}
+.lb-rank{font-size:16px;font-weight:800;width:28px;text-align:center;flex-shrink:0}
+.lb-avatar{width:36px;height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:800;flex-shrink:0}
+.lb-name{flex:1;font-size:14px;font-weight:600}
+.lb-bar-wrap{flex:0 0 200px}
+.lb-bar{height:6px;background:var(--border);border-radius:3px;overflow:hidden}
+.lb-fill{height:100%;border-radius:3px}
+.lb-pct{font-size:13px;font-weight:700;min-width:40px;text-align:right;flex-shrink:0}
+.lb-row:nth-child(1){border-color:rgba(234,179,8,.4);background:rgba(234,179,8,.04)}
+.lb-row:nth-child(2){border-color:rgba(156,163,175,.3)}
+.lb-row:nth-child(3){border-color:rgba(180,83,9,.3)}
+
+.toast{position:fixed;bottom:24px;right:24px;background:var(--bg-card);border:1px solid var(--green-border);border-radius:10px;padding:12px 18px;font-size:13px;font-weight:600;color:var(--green);z-index:300;opacity:0;transform:translateY(10px);transition:all .3s;pointer-events:none}
+.toast.show{opacity:1;transform:translateY(0)}
+
+.empty{text-align:center;padding:60px 24px;color:var(--text-muted)}
+.empty-icon{font-size:3rem;margin-bottom:12px}
+.empty h3{font-size:1.1rem;font-weight:600;color:var(--text);margin-bottom:6px}
+.empty p{font-size:14px}
+
+.podium{display:flex;align-items:flex-end;justify-content:center;gap:12px;padding:20px 0 0;margin-bottom:8px}
+.podium-step{text-align:center;border-radius:var(--radius) var(--radius) 0 0;padding:20px 16px 16px;position:relative}
+.podium-step.gold{background:rgba(234,179,8,.08);border:1px solid rgba(234,179,8,.25);border-bottom:4px solid var(--yellow);min-height:180px;flex:0 0 160px}
+.podium-step.silver{background:rgba(156,163,175,.06);border:1px solid rgba(156,163,175,.18);border-bottom:4px solid #9ca3af;min-height:140px;flex:0 0 140px}
+.podium-step.bronze{background:rgba(180,83,9,.06);border:1px solid rgba(180,83,9,.18);border-bottom:4px solid #b45309;min-height:120px;flex:0 0 140px}
+.podium-avatar{width:48px;height:48px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:22px;margin:0 auto 8px}
+.podium-name{font-size:14px;font-weight:700;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.podium-pct{font-size:22px;font-weight:800}
+.podium-medal{font-size:28px;margin-bottom:8px}
+
+.activity-list{max-height:320px;overflow-y:auto}
+.activity-item{display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)}
+.activity-item:last-child{border-bottom:none}
+.activity-icon{width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0}
+.activity-text{font-size:13px;flex:1;line-height:1.4}
+.activity-time{font-size:11px;color:var(--text-dim);flex-shrink:0;white-space:nowrap}
+
+.team-card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin-bottom:8px}
+.same-mod-avatars{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.same-mod-avatar{display:flex;align-items:center;gap:6px;padding:4px 10px;border-radius:6px;background:var(--bg-elevated);font-size:12px;font-weight:600}
+
+.duo-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:28px}
+
+@media(max-width:640px){.qa-grid{grid-template-columns:1fr}.stats-row{grid-template-columns:repeat(2,1fr)}.lb-bar-wrap{flex:0 0 100px}.nav-logo .subtitle{display:none}.nav-actions{gap:4px}.duo-grid{grid-template-columns:1fr}.podium-step{flex:0 0 100px!important;min-height:auto!important;padding:12px 8px}}
+</style>
+</head>
+<body>
+
+<div class="toast" id="toast"></div>
+
+<div class="congrats-overlay" id="congratsOverlay" onclick="closeCongratsIfBg(event)">
+  <div class="congrats-modal" id="congratsModal">
+    <div class="congrats-icon" id="congratsIcon"></div>
+    <div class="congrats-title" id="congratsTitle"></div>
+    <div class="congrats-sub" id="congratsSub"></div>
+    <div class="congrats-badge" id="congratsBadge"></div>
+    <div style="margin-top:24px">
+      <button class="btn btn-primary" onclick="closeCongrats()">Keep Going!</button>
+    </div>
+  </div>
+</div>
+
+<nav class="nav">
+  <div class="nav-logo">
+    <span class="brand">SDET</span>
+    <span class="subtitle" style="font-size:14px;font-weight:600;color:var(--text-muted)">Journey</span>
+  </div>
+  <div class="nav-actions" id="navActions"></div>
+</nav>
+
+<div class="modal-overlay" id="addModal">
+  <div class="modal">
+    <h2>Add Team Member</h2>
+    <div class="form-group">
+      <label class="form-label">Full Name</label>
+      <input class="form-input" id="newName" placeholder="e.g. Ana Garcia" />
+    </div>
+    <div class="form-group">
+      <label class="form-label">Email</label>
+      <input class="form-input" id="newEmail" type="email" placeholder="e.g. ana.garcia@unosquare.com" />
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="addQA()">Add Member</button>
+    </div>
+  </div>
+</div>
+
+<!-- EDIT MEMBER MODAL -->
+<div class="modal-overlay" id="editModal">
+  <div class="modal">
+    <h2>Edit Team Member</h2>
+    <input type="hidden" id="editId" />
+    <div class="form-group">
+      <label class="form-label">Full Name</label>
+      <input class="form-input" id="editName" placeholder="e.g. Ana Garcia" />
+    </div>
+    <div class="form-group">
+      <label class="form-label">Email</label>
+      <input class="form-input" id="editEmail" type="email" placeholder="e.g. ana.garcia@unosquare.com" />
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-outline" onclick="closeEditModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveEditQA()">Save Changes</button>
+    </div>
+  </div>
+</div>
+
+<!-- DELETE CONFIRM MODAL -->
+<div class="modal-overlay" id="deleteModal">
+  <div class="modal" style="max-width:380px">
+    <h2 style="color:var(--red)">Delete Member</h2>
+    <input type="hidden" id="deleteId" />
+    <p style="font-size:14px;color:var(--text-muted);margin-bottom:8px">Are you sure you want to remove <strong id="deleteName"></strong> from the team?</p>
+    <p style="font-size:12px;color:var(--text-dim);margin-bottom:0">All their progress, exercises, and badges will be permanently deleted.</p>
+    <div class="form-actions">
+      <button class="btn btn-outline" onclick="closeDeleteModal()">Cancel</button>
+      <button class="btn" style="background:var(--red);color:#fff" onclick="confirmDeleteQA()">Delete Member</button>
+    </div>
+  </div>
+</div>
+
+
+<div class="modal-overlay" id="reportModal" style="align-items:flex-start;padding-top:40px">
+  <div class="modal" style="max-width:700px;max-height:80vh;overflow:auto">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+      <h2 style="margin:0">Weekly Report</h2>
+      <button class="btn btn-outline btn-sm" onclick="document.getElementById('reportModal').classList.remove('show')">Close</button>
+    </div>
+    <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px">Copy the HTML below and paste it into your email client, or click "Open in New Tab" to print/save.</p>
+    <div style="display:flex;gap:8px;margin-bottom:16px">
+      <button class="btn btn-primary btn-sm" onclick="openReportTab()">Open in New Tab</button>
+      <button class="btn btn-outline btn-sm" onclick="copyReport()">Copy HTML</button>
+    </div>
+    <textarea id="reportHtml" style="width:100%;height:300px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px;color:var(--text-muted);font-family:monospace;font-size:11px;resize:vertical;outline:none" readonly></textarea>
+  </div>
+</div>
+
+<!-- DASHBOARD (Admin View) -->
+<div class="view" id="view-dashboard">
+  <div style="display:flex;align-items:center;gap:12px;padding-top:20px;justify-content:center">
+    <span style="font-size:11px;padding:4px 10px;border-radius:6px;background:var(--purple-dim);color:var(--purple);border:1px solid rgba(168,85,247,.3);font-weight:600">ADMIN VIEW</span>
+    <span style="font-size:12px;color:var(--text-dim)">Team overview, stats &amp; reporting</span>
+  </div>
+  <div class="hero">
+    <h1>The SDET Journey</h1>
+    <p>Track your journey from QA to SDET. 13 modules, 89 topics, 89 exercises, 12 deliverables.</p>
+  </div>
+  <div class="stats-row" id="globalStats"></div>
+  <div class="section-header">
+    <span class="section-title">Team Members</span>
+    <button class="btn btn-primary btn-sm" onclick="document.getElementById('addModal').classList.add('show')">+ Add Member</button>
+  </div>
+  <div class="qa-grid" id="qaGrid"></div>
+</div>
+
+<!-- LEADERBOARD -->
+<div class="view" id="view-leaderboard">
+  <div style="display:flex;align-items:center;gap:12px;padding-top:20px;justify-content:center" id="lbViewLabel"></div>
+  <div class="hero">
+    <h1>Leaderboard</h1>
+    <p>Who's making the most progress?</p>
+  </div>
+  <div class="leaderboard" id="lbList"></div>
+</div>
+
+<!-- TEAM DASHBOARD (Member View) -->
+<div class="view" id="view-team">
+  <div style="display:flex;align-items:center;gap:12px;padding-top:20px;justify-content:center">
+    <span style="font-size:11px;padding:4px 10px;border-radius:6px;background:var(--blue-dim);color:var(--blue-light);border:1px solid var(--blue-border);font-weight:600">MEMBER VIEW</span>
+  </div>
+  <div id="teamContent"></div>
+</div>
+
+<!-- INDIVIDUAL (Member View) -->
+<div class="view" id="view-individual">
+  <button class="back-btn" id="backBtn" onclick="isAdminMode()?showView('dashboard'):showView('team')">← Back</button>
+  <div id="individualContent"></div>
+</div>
+
+<!-- LOCKED (No valid URL) -->
+<div class="view" id="view-locked">
+  <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:60vh;text-align:center;padding:40px 20px">
+    <div style="font-size:64px;margin-bottom:20px">🔒</div>
+    <h2 style="color:var(--text);margin-bottom:8px">The SDET Journey</h2>
+    <p style="color:var(--text-muted);margin-bottom:24px;max-width:400px">Access requires a valid link.<br>Ask your People Lead for your personal member link.</p>
+  </div>
+</div>
+
+<script>
+const CURRICULUM = [
+  { id:'m0', num:'00', name:'Foundations & Mindset', topics:[
+    {name:'Why Test Automation Matters', exercises:['Pick one manual flow your team runs every release. Time it. Multiply by # of releases per year.','Estimate the build cost of automating it. Compute payback period in releases.','Identify one flow that should NOT be automated yet (too volatile, low value, hard to stabilize) — explain why.']},
+    {name:'The Automation Pyramid', exercises:['Count tests in your current project at each level. Sketch the actual shape.','Find one E2E test that asserts a business rule. Could it move to unit/integration? Try it.','Pick one bug from the last sprint. At which level should it have been caught?']},
+    {name:'Types of Automation Testing', exercises:['Take 5 recent bugs in your tracker. Match each to the type of test that would have caught it earliest.','Identify one type your team isn\'t doing at all. Sketch the smallest first investment (one tool, one test).','Run an accessibility scan (axe-core or Lighthouse) on a page you own. Triage the top 3 findings.']},
+    {name:'Non-Functional Testing', exercises:['Pick one critical endpoint. Write down its SLO (latency target, error budget, target RPS).','Run a 1-minute k6 test against it locally. Read the P95 line.','Run a Lighthouse audit on a page you own. Capture Performance, Accessibility, Best Practices, SEO scores.','Run an axe-core scan; file the top 3 a11y issues as tickets.']},
+    {name:'API vs Front-end Automation', exercises:['Pick 5 E2E tests in your suite. Mark which ones could be replaced or shortened by API tests.','Convert one E2E business-rule check into an API test. Measure the speed difference.','Identify the smallest set of E2E tests that prove "the UI itself works" — that\'s your real E2E budget.']},
+    {name:'Why E2E Automated Tests Matter', exercises:['List your product\'s "if this breaks we lose money or trust" flows. That\'s your E2E budget.','For each flow, write down what makes it flaky today, and one specific stabilisation you\'d apply.','Configure your E2E job to capture trace + screenshot on failure and upload as a CI artifact.']}
+  ]},
+  { id:'m1', num:'01', name:'Front-end Automation', topics:[
+    {name:'Selenium vs Playwright vs Cypress', exercises:['Implement the same login test in two of the three. Time the run, count the lines.','Note what each one does automatically that the other doesn\'t.','Write a 1-paragraph rationale for which you\'d choose for your current product.']},
+    {name:'Handling Web Elements', exercises:['On the-internet.herokuapp.com: automate a checkbox, a dropdown, a JS alert.','Find the same element via id, css, xpath, and getByRole — compare brittleness.','Extract a table\'s row count and assert it equals 4.']},
+    {name:'Synchronization & Waits', exercises:['On the-internet.herokuapp.com/dynamic_loading: solve once with sleep, once with explicit wait. Run each 10x — count flakes.','Set a deliberately short timeout; read the failure message.','Find one Thread.sleep in your codebase; replace it with a wait and write a 1-line PR description.']},
+    {name:'Exceptions & Debugging', exercises:['Trigger each of the three exceptions deliberately, then fix each one.','Add screenshot-on-failure to your runner config; verify a deliberate failure produces one.','In DevTools Console, validate one CSS and one XPath selector live.']},
+    {name:'Assertions', exercises:['Add assertions for: title, URL, an element\'s text, an attribute.','Force each to fail; rewrite any vague messages.','Replace one if/else+log block with an explicit assertion.']},
+    {name:'Page Object Model — Basics', exercises:['Refactor any 3-test suite into a Page Object.','Change a selector in the page object only; verify all 3 tests still pass.','Lift two reusable methods into a BasePage.']},
+    {name:'Dynamic XPath Strategies', exercises:['On a real app, find an element with no stable id. Build an XPath anchored on its label.','Build an XPath that finds a button by row\'s text content (table cells).','Negotiate data-testid on the 3 most-tested components in your app.']},
+    {name:'Chrome DevTools Protocol (CDP)', exercises:['Mock a single API response in a test; verify the UI renders the mocked state.','Throttle network to "Slow 3G" and run a critical flow; observe what breaks.','Capture all console errors during a test; fail if any appear.']},
+    {name:'Advanced Waits & Retry Management', exercises:['Write a waitFor helper. Replace 3 ad-hoc polling loops with it.','Find a test that retries the whole flow on flake; move the retry to the actual unstable call.','Quarantine 1 known-flaky test in a separate suite; track it until fixed.']},
+    {name:'Shadow DOM & iFrames', exercises:['Automate a Stripe Elements card form using frame locators.','Find a shadow-DOM component in your app; build a stable selector.','Dismiss a cookie banner that lives in a shadow root.']},
+    {name:'Multi-Framework Exposure', exercises:['Port one Playwright test to Cypress (or vice versa). Note what each does naturally vs awkwardly.','Read each tool\'s "best practices" doc — make a 1-page cheat sheet of differences.','Write a 1-paragraph tool recommendation for a hypothetical greenfield project.']}
+  ]},
+  { id:'m2', num:'02', name:'Programming', topics:[
+    {name:'OOP Basics', exercises:['Build a TestUser class with email, role, fullName().','Make all fields private; expose only what tests need.','Instantiate two users; pass them into a login test.']},
+    {name:'Inheritance & Polymorphism', exercises:['Define a BasePage with open() and title(); subclass twice.','Override title() in each; assert per page.','Try the same with an interface — note where reuse breaks.']},
+    {name:'Error Handling', exercises:['Wrap a flaky API call in a single retry; log the first failure.','Define a TestDataMissingException with a useful message.','Find one empty catch in a real codebase; fix it.']},
+    {name:'Data Structures', exercises:['Build a TestDataProvider returning a list of 5 users.','Replace an if/else env-URL block with a Map lookup.','Use a Set to detect duplicates in generated emails.']},
+    {name:'Working with Libraries & Packages', exercises:['Add and import 3 libraries; run them.','Read the lockfile — find one transitive dep you didn\'t install directly.','Bump a library by a major version. Read the changelog. Decide.']},
+    {name:'Code Organization', exercises:['Reorganise a flat scripts/ folder into a proper layout.','Find a 60-line function; split into 3 helpers.','Delete every comment that just restates the code.']}
+  ]},
+  { id:'m3', num:'03', name:'API Automation', topics:[
+    {name:'Bridge: Postman to Code', exercises:['Save a Postman request; convert via Code button. Run it.','Print only 3 specific fields from the response.','Add one dynamic header (e.g., a generated request ID).']},
+    {name:'Writing Your First API Test', exercises:['Against reqres.in: GET asserting status + 1 field.','POST that creates and asserts non-null id.','Chain POST -> GET to prove the resource is retrievable.']},
+    {name:'Making Tests Reusable', exercises:['Move base URL out of every test into a single config.','Build a request wrapper that auto-attaches auth.','Externalise one POST body to JSON; load it from the test.','Drive the same test from a 3-row CSV.']},
+    {name:'Working Without a Backend (Mocks)', exercises:['Spin up a Postman mock for GET /users/{id} with 200 + 404 examples.','Write tests that pass against the mock for both cases.','Add a 500 example; verify your test surfaces it cleanly.']},
+    {name:'Serialization / Deserialization', exercises:['Define a schema/POJO for a real endpoint; deserialise the response.','Break the schema deliberately; observe the failure message.','Test a nested array endpoint — assert against typed sub-fields.']},
+    {name:'Data-Driven & Auth', exercises:['Drive a test from a 5-row JSON dataset.','Implement OAuth2 password-grant token retrieval; cache for the suite.','Write a role matrix (admin/user/guest x 3 endpoints) and assert correct codes.']},
+    {name:'Non-Functional API Testing', exercises:['Pick one critical endpoint; write a k6 SLO test (P95 latency at target RPS).','Fire 50 concurrent POSTs to a "create unique resource" endpoint; assert no duplicates.','Add a perf job to CI that runs nightly, not per-commit.']},
+    {name:'JSON Schema Validation', exercises:['Generate a JSON Schema from your OpenAPI spec (or write one for a small response).','Add schema validation to one existing test; deliberately break the response shape.','Compare schema validation to typed deserialisation — when do you want both?']},
+    {name:'API Test Organisation', exercises:['Reorganise a flat api-tests/ folder by resource.','Build one client class for the most-used resource.','Tag 5 tests as @smoke; configure a CI job that runs only them on PR.']},
+    {name:'CI/CD Pipeline Integration', exercises:['Add a smoke job that runs on every PR (< 2 min target).','Add a nightly full-regression job; set up notifications on failure.','Configure a status badge for the API suite in your README.']}
+  ]},
+  { id:'m4', num:'04', name:'SQL', topics:[
+    {name:'DDL & Schema Understanding', exercises:['Spin up SQLite or use DB Fiddle. Create users + orders with FKs.','Add a column with ALTER; drop the column.','Read your project\'s schema; sketch the ERD on paper.']},
+    {name:'All JOIN Types', exercises:['SQLZoo JOINs tutorial end-to-end.','Same query 3 ways: INNER, LEFT, RIGHT — compare row counts.','Find users with NO orders (LEFT JOIN + IS NULL).']},
+    {name:'Complex WHERE Clauses', exercises:['Write a 3-condition query; rewrite with parentheses to flip meaning.','Replace an OR chain with IN.','Solve "products never ordered" using a subquery.']},
+    {name:'Aggregate Functions & GROUP BY', exercises:['Compute total revenue per month.','List products ordered fewer than 3 times.','Find each customer\'s largest single order with MAX.']},
+    {name:'Database Connectivity from Code', exercises:['Connect to local SQLite or Postgres from your test project.','Run SELECT; read 1 column.','Write a teardown that deletes the test rows you created.']},
+    {name:'Parameterized Queries', exercises:['Convert one concatenated query to a prepared statement.','Try injecting \' OR 1=1 -- against both versions; observe.','Explain to a teammate why parameter binding stops the attack.']},
+    {name:'Transaction Basics', exercises:['Wrap inserts in BEGIN/ROLLBACK; confirm rows don\'t persist.','Force a failure mid-flow; verify nothing committed.','Read up on isolation levels; identify your DB\'s default.']},
+    {name:'Result Set Handling & Schema Navigation', exercises:['Query information_schema; list every table and FK.','Sketch the ERD on paper from the FK list.','Write a helper mapping a ResultSet row to a typed record.']},
+    {name:'Indexes Awareness', exercises:['Run EXPLAIN on a query against a 100k-row table; note "seq scan" vs "index scan".','Add an index; re-run EXPLAIN; observe.','Insert 1k rows on the indexed table; note the (small) write cost.']},
+    {name:'Window Functions', exercises:['Find each customer\'s most-recent order using ROW_NUMBER + PARTITION BY.','Use LAG to compute time between consecutive orders per user.','Compute a running total of daily revenue.']},
+    {name:'Common Table Expressions (CTEs)', exercises:['Rewrite a nested subquery using a CTE; compare readability.','Write a recursive CTE for a category tree.','Chain 3 CTEs to express a multi-step transformation.']},
+    {name:'Complex Subqueries', exercises:['Rewrite an IN(subquery) as EXISTS; compare EXPLAIN plans.','Find one correlated subquery; rewrite as a JOIN; compare.','Identify a case where IN and JOIN return different counts (duplicates).']},
+    {name:'Database Testing', exercises:['Spin up a Postgres container in a test; run migrations against it.','Write a test asserting a NOT NULL constraint actually rejects NULLs.','Add a test that round-trips a stored procedure with sample input.']},
+    {name:'NoSQL Awareness', exercises:['Run MongoDB locally (Docker). Insert and query a document.','Model a small domain twice — relational vs document. Compare query patterns.','Identify one place in your product where NoSQL would simplify, and one where it would hurt.']}
+  ]},
+  { id:'m5', num:'05', name:'Code Versioning (Git)', topics:[
+    {name:'Version Control Fundamentals', exercises:['Clone any public repo, add a file, commit, push to a fork.','Inspect .git/; see commits as files in objects/.','Compare centralized vs distributed in a 1-paragraph note.']},
+    {name:'Git Basics — Daily Commands', exercises:['Make 3 commits with messages that pass the "would I understand this in 6 months?" test.','Use git add -p to stage half a file\'s changes.','Run git log --graph on a multi-branch repo.']},
+    {name:'Branching & Merging', exercises:['Create two branches that edit the same line. Merge, resolve, commit.','Try the same with rebase. Note when each is more readable.','Read 5 random merge commits in a real repo; rate the messages.']},
+    {name:'Collaboration Basics — Pull Requests', exercises:['Fork a small open-source repo, fix a typo, open a PR.','Read 3 well-reviewed PRs in a real repo; note what made the discussion productive.','On your next PR, write the description before the code.']},
+    {name:'Git Workflows — Gitflow vs Trunk-Based', exercises:['Identify which workflow your team uses; document it in 1 paragraph.','For one feature, sketch how it would flow through both workflows.','Set up a feature-flag library; gate a small change behind it.']},
+    {name:'History Management — Revert, Reset, Reflog', exercises:['Revert a commit on a branch; observe the new "Revert ..." commit.','Use git reset --hard to discard local work, then recover with reflog.','Squash 4 WIP commits into 1 with interactive rebase.']},
+    {name:'PR & Code Review Mastery', exercises:['Take your last PR; rewrite the description in a structured format.','Review one open PR in your repo with the lens "what\'s the smallest blocker?".','Resolve a merge conflict on a branch end-to-end without using the GitHub UI.']},
+    {name:'Tagging & Releases', exercises:['Tag a commit; push the tag; verify it appears on GitHub.','Create a GitHub Release with auto-generated notes.','Add a CI step that tags on merge to main using a SemVer tool.']}
+  ]},
+  { id:'m6', num:'06', name:'CI / CD', topics:[
+    {name:'Core Concepts — CI vs CD', exercises:['Read a real CI YAML in your repo. Identify trigger, jobs, steps, caches.','Explain CI vs CD vs continuous deployment to a non-technical friend in 60 seconds.','Sketch which stage each test type lives in (unit/integration/e2e).']},
+    {name:'Working with Pipelines', exercises:['Trigger a workflow manually with an input. Read the output.','Find one failed run; classify: runner / build / test failure.','Add a step that runs only on PR.']},
+    {name:'Running Tests in CI', exercises:['Add a secret; reference it; print only its length to logs (never the value).','Configure a JUnit-format report; upload as artifact; download and open it.','Add a deliberately-failing test; verify the build goes red and the report shows the failure.']}
+  ]},
+  { id:'m7', num:'07', name:'Mobile Automation', topics:[
+    {name:'Environment Setup — Appium, ADB, Emulators', exercises:['Install Appium 2 + Android Studio. Boot an emulator. Run adb devices.','Launch a sample app on the emulator via Appium with capabilities.','Use adb logcat to find the package name of an installed app.']},
+    {name:'Locators & Gestures', exercises:['Open Appium Inspector against a running app; identify 3 elements by accessibility-id.','Automate a tap, a long-press, and a swipe.','Negotiate stable accessibility-ids with your dev team for the 5 most-tested screens.']},
+    {name:'Mobile-Specific Scenarios', exercises:['Toggle airplane mode mid-test; assert the offline state shows.','Switch to webview in a hybrid screen; click an element inside it.','Trigger an interrupt (incoming SMS via emulator command); verify the app recovers.']},
+    {name:'Page Object Model for Mobile', exercises:['Refactor a flat mobile test into a Screen Object.','Add a platform branch for one element that differs between iOS and Android.','Build a scrollUntilVisible(label) helper in BaseScreen.']},
+    {name:'Screenshot & Diagnostics on Failure', exercises:['Add screenshot + page source + logcat capture on failure.','Configure video recording for one suite run.','Trigger a deliberate failure; verify all artifacts upload to CI.']}
+  ]},
+  { id:'m8', num:'08', name:'Design Patterns', topics:[
+    {name:'Page Object Model — Established Framework', exercises:['Refactor 3 page objects to return the next page object on success actions.','Extract a NavBar component object and reuse it across pages.','Move shared waits to BasePage; delete duplicates.']},
+    {name:'Screenplay Pattern', exercises:['Read one Screenplay test aloud — verify it reads as English prose.','Convert one POM-based test into Screenplay; compare lines & readability.','Write a custom Task for "complete checkout".']},
+    {name:'Singleton', exercises:['Implement a thread-local driver holder; run 4 tests in parallel; verify isolation.','Build a Config singleton that loads config.<env>.json once.','Identify one singleton in an existing project that should be a fixture instead.']},
+    {name:'Page Factory', exercises:['Convert a manual Selenium-Java POM to use Page Factory annotations.','Trigger a stale element scenario; observe and fix.','Compare line count vs the manual approach; decide which you prefer.']}
+  ]},
+  { id:'m9', num:'09', name:'Testing Approaches & Frameworks', topics:[
+    {name:'BDD — Behaviour-Driven Development', exercises:['Write 3 scenarios for a feature you own — read them with a non-engineer; iterate.','Implement step definitions for one scenario.','Decide for one team: is BDD paying for its overhead? Document the answer.']},
+    {name:'TDD — Test-Driven Development', exercises:['Pick a small utility function. Write it TDD-style — test, code, refactor.','Next bug you fix: write the failing test reproducing it before you fix.','Try one Kata (e.g., Roman Numerals, FizzBuzz) entirely TDD.']},
+    {name:'JVM Test Frameworks — TestNG & JUnit', exercises:['Set up JUnit 5 in a Maven project; run a parametrised test from @CsvSource.','Configure parallel execution; verify thread isolation.','Write a custom JUnit 5 Extension that takes a screenshot on failure.']},
+    {name:'Other Frameworks — NUnit, MSTest, Mocha, Jest, pytest', exercises:['Pick the framework matching your project\'s language. Set up a parametrised test.','Configure parallel/sharded execution.','Add one fixture or hook that captures a screenshot on failure.']},
+    {name:'Cucumber / SpecFlow — BDD Frameworks', exercises:['Set up Cucumber + Playwright (or SpecFlow + Selenium for .NET); run one scenario.','Reuse a step definition across two scenarios; verify ambiguity warnings if regex collides.','Generate an HTML/Allure report; share with a non-engineer for feedback.']}
+  ]},
+  { id:'m10', num:'10', name:'AI for Developers', topics:[
+    {name:'What is AI — ML, Deep Learning, LLMs', exercises:['Define ML / DL / LLM in your own words.','Ask an LLM to write a test for a real page you control. Run it. Note what it got wrong.','Identify one task where AI saved you 20+ minutes this week.']},
+    {name:'AI Coding Assistants — Copilot, Cursor, Claude Code', exercises:['Install Copilot in VS Code. Use it for an hour on real test code. Note one save and one mistake.','Try the chat panel; give it a 50-line file and ask it to refactor.','Compare the same prompt across two tools; observe which needed less correction.']},
+    {name:'AI Safety — Reviewing AI-Generated Code', exercises:['Ask an AI for a "secure" auth helper. Audit it against the OWASP cheat sheet.','Find one hallucinated API call in your AI history. Save the example.','Run a license scanner on a small AI-assisted project.']},
+    {name:'Advanced AI Tools', exercises:['Use Cursor Composer or Claude Code for one multi-file refactor. Read every diff before accepting.','Use Copilot\'s chat with @workspace context to ask about an unfamiliar repo.','Set up a CLAUDE.md / .cursorrules with your project\'s conventions; verify the agent respects them.']},
+    {name:'AI for Test Automation', exercises:['Generate a page object for one screen with AI. Audit every locator.','Generate test data (50 plausible users) as JSON; spot-check for duplicates.','Convert a 10-test suite from manual waits to auto-retrying matchers via AI; review every diff.']},
+    {name:'AI-Assisted Debugging — Errors & Logs', exercises:['Take a recent flaky failure. Paste error + code into AI; rank the hypotheses against your own.','Paste a 100-line failing log; ask AI to identify the first interesting line.','For one bug, document the 3 wrong hypotheses AI suggested before the right one.']}
+  ]},
+  { id:'m11', num:'11', name:'Prompt Engineering', topics:[
+    {name:'Writing Prompts for Code', exercises:['Take a vague prompt you wrote and rewrite it with the 4 elements (role, context, task, format).','Run both versions; diff the outputs.','Save the best 3 prompts you write this week as templates.']},
+    {name:'Basic Patterns — Write / Explain / Fix', exercises:['Use each pattern once today on real test code.','Take a recent bug; ask AI to explain the root cause from the diff. Compare to your own analysis.','Build 1-line shortcut prompts: /refactor, /explain, /test-this.']},
+    {name:'Learning from AI Suggestions', exercises:['Pick one AI suggestion you accepted last week. Find the docs for every API it used.','Replace one AI suggestion with a simpler one you wrote yourself. Compare readability.','Keep a notebook: 1 line per useful pattern AI taught you each week.']},
+    {name:'Code Generation Prompts — Framework-Specific', exercises:['Build a "framework prompt" template for your stack (1 paragraph) — reuse it everywhere.','Refactor 3 tests with the template; compare diffs to your manual fixes.','Generate a new test from a 1-sentence description that includes the framework prompt.']},
+    {name:'Prompt Techniques — Few-Shot & Chain of Thought', exercises:['Pick a tricky transformation in your codebase. Write a 3-shot prompt; verify accuracy.','Use "list 3 hypotheses, then recommend one" on a real bug.','Compare zero-shot vs few-shot output for the same task; note quality difference.']},
+    {name:'SDET-Specific Patterns', exercises:['Build a 5-prompt library covering: framework setup, API tests from OpenAPI, POM scaffolding, CI YAML, test data.','Run each on a fresh dummy project; refine until output requires no edits.','Share your library with one teammate; iterate based on feedback.']}
+  ]},
+  { id:'m12', num:'12', name:'Context Engineering', topics:[
+    {name:'Code Context Fundamentals — What the AI Needs', exercises:['Write a prompt for a real change with no context. Save the output.','Write the same prompt with 3 files of context. Diff the quality.','Identify the minimum file set the AI needed (often 2-3 files).']},
+    {name:'Providing Code Context — Files, Architecture, Rules', exercises:['Write a 1-page rules file for your project. Test it with 3 prompts.','Reference 2 files in a prompt explicitly; compare to a no-context run.','Add a 3-bullet "architecture" header to your standard prompt template.']},
+    {name:'Repository-Aware Prompting — Project Structure & Patterns', exercises:['Write a 1-page ARCHITECTURE.md for your repo. Test by asking an AI to describe the project back.','Find one inconsistent folder/naming pattern; fix it.','Use @workspace or codebase indexing on a real change; observe what context the agent picked.']},
+    {name:'Multi-File Context — Related Files & Test/Code Pairs', exercises:['Pick a small change touching 3 files. Write one prompt that updates all three; verify the diffs.','Find one PR you wrote where the AI missed a caller — write the prompt that would have caught it.','Build a "test/page/fixture trio" prompt template and reuse for next 3 features.']},
+    {name:'Documentation as Context — Specs & Requirements', exercises:['Generate API tests from your team\'s OpenAPI spec; review what the AI got right and wrong.','Where the spec was wrong, file a docs ticket — that\'s value the AI surfaced.','Pair a feature file with a prompt to generate step definitions; review for accuracy.']}
+  ]}
+];
+
+const TOTAL_TOPICS = CURRICULUM.reduce((s,m)=>s+m.topics.length,0);
+const TOTAL_EXERCISES = TOTAL_TOPICS;
+
+const MODULE_COLORS = [
+  '#2563eb','#7c3aed','#0891b2','#059669','#d97706','#dc2626',
+  '#7c3aed','#0284c7','#16a34a','#9333ea','#0f766e','#b45309','#1d4ed8'
+];
+
+const MODULE_ICONS = ['🚀','🖥️','💻','🔗','🗃️','🔀','⚙️','📱','🏗️','🧪','🤖','✍️','📐'];
+
+const DELIVERABLES = [
+  {modId:'m0', title:'Automation Strategy Memo', desc:'1-page Automation Strategy memo: pyramid shape, test types, non-functional risks, what NOT to automate'},
+  {modId:'m1', title:'Playwright POM Suite', desc:'5-test Playwright POM suite against SauceDemo, auto-waits, screenshots + trace on failure'},
+  {modId:'m2', title:'Code Challenge', desc:'Solve a code challenge (e.g., anagram detector, palindrome, valid parentheses) — clean OOP, classes/methods, error handling, no copy-paste from AI'},
+  {modId:'m3', title:'API Test Suite', desc:'API suite: 5+ tests, OAuth token retrieval, schema validation, parametrised from CSV/JSON'},
+  {modId:'m4', title:'SQL Query File', desc:'10+ SQL queries on a seeded sample DB covering JOINs, GROUP BY/HAVING, subqueries, window functions, one CTE — runnable .sql file'},
+  {modId:'m5', title:'Clean PR', desc:'One clean PR in a sandbox repo: feature branch, conventional commits, one rebase, one resolved merge conflict, one squashed history'},
+  {modId:'m6', title:'CI/CD Pipeline', desc:'GitHub Actions workflow running tests on PR, secrets via env vars, HTML report uploaded as artifact, build fails on test failure'},
+  {modId:'m7', title:'Mobile Test', desc:'Appium test on Android emulator: 3 scenarios, screen objects, screenshot + page-source on failure'},
+  {modId:'m8', title:'POM Refactor', desc:'Refactor a flat test suite into layered POM (BasePage + chained page objects + one component object); diff committed'},
+  {modId:'m9', title:'TDD or BDD Feature', desc:'Either (a) TDD\'d utility lib with red→green→refactor commits, OR (b) Cucumber feature with 3 scenarios + step definitions'},
+  {modId:'m10', title:'AI-Assisted Edits Doc', desc:'Doc with 10 AI-assisted edits logged: prompt → AI output → final edit → why you changed it'},
+  {modId:'m11', title:'Prompt Library', desc:'Personal prompt library: ≥5 reusable templates (framework setup, test gen, CI YAML, debug, refactor) committed to a repo'},
+];
+const TOTAL_DELIVERABLES = DELIVERABLES.length;
+
+const AVATARS = ['🦊','🐼','🦁','🐸','🦋','🐺','🦅','🐬','🦄','🐯','🦉','🐙','🐲','🦈'];
+
+const MOTIVATIONAL = [
+  'Streak growing! Keep it up!','Topic unlocked! You\'re on a roll!','Great progress! The team is watching!',
+  'One step closer to SDET!','Crushing it! Keep the momentum!','Knowledge +1! Nice work!','Another topic down! You\'re unstoppable!'
+];
+
+function getAvatar(member, fallbackIdx) {
+  return member.avatar || AVATARS[(fallbackIdx||0) % AVATARS.length];
+}
+
+function getData() {
+  let d;
+  try { d = JSON.parse(localStorage.getItem('sdet_tracker_v2') || '{"members":[]}'); }
+  catch { d = { members: [] }; }
+  let dirty = false;
+  d.members.forEach((m,i)=>{
+    if(!m.avatar) { m.avatar = AVATARS[i % AVATARS.length]; dirty = true; }
+  });
+  if(dirty) saveData(d);
+  return d;
+}
+function saveData(d) { localStorage.setItem('sdet_tracker_v2', JSON.stringify(d)); }
+function getMember(id) { return getData().members.find(m=>m.id===id); }
+
+function calcProgress(member) {
+  const done = member.done || {};
+  let total = 0, completed = 0;
+  CURRICULUM.forEach(mod=>{
+    mod.topics.forEach((_,i)=>{ total++; if(done[mod.id]?.[i]) completed++; });
+  });
+  return { total, completed, pct: total ? Math.round(completed/total*100) : 0 };
+}
+
+function isExerciseComplete(member, modId, ti) {
+  const exDoneMap = member.exDone?.[modId]?.[ti] || {};
+  const mod = CURRICULUM.find(m=>m.id===modId);
+  if(!mod) return false;
+  const topic = mod.topics[ti];
+  if(!topic || topic.exercises.length===0) return false;
+  return topic.exercises.every((_,ei) => exDoneMap[ei]);
+}
+
+function calcExerciseProgress(member) {
+  let total = 0, completed = 0;
+  CURRICULUM.forEach(mod=>{
+    mod.topics.forEach((_t,ti)=>{
+      total++;
+      if(isExerciseComplete(member, mod.id, ti)) completed++;
+    });
+  });
+  return { total, completed, pct: total ? Math.round(completed/total*100) : 0 };
+}
+
+function calcModuleProgress(member, mod) {
+  const done = member.done?.[mod.id] || {};
+  const completed = Object.values(done).filter(Boolean).length;
+  return { completed, total: mod.topics.length, pct: Math.round(completed/mod.topics.length*100) };
+}
+
+function calcModuleExerciseProgress(member, mod) {
+  let total = mod.topics.length, completed = 0;
+  mod.topics.forEach((_t,ti)=>{
+    if(isExerciseComplete(member, mod.id, ti)) completed++;
+  });
+  return { total, completed, pct: total ? Math.round(completed/total*100) : 0 };
+}
+
+function getTodoDoneCount(member, modId, ti) {
+  const exDoneMap = member.exDone?.[modId]?.[ti] || {};
+  return Object.values(exDoneMap).filter(Boolean).length;
+}
+
+function getCompletedModules(member) {
+  return CURRICULUM.filter(mod=>{
+    const tp = calcModuleProgress(member, mod);
+    const ep = calcModuleExerciseProgress(member, mod);
+    return tp.completed === tp.total && ep.completed === ep.total;
+  });
+}
+
+function getLevel(pct) {
+  if(pct < 10) return { level:1, name:'Newcomer', color:'#6b7280' };
+  if(pct < 25) return { level:2, name:'Explorer', color:'#3b82f6' };
+  if(pct < 40) return { level:3, name:'Practitioner', color:'#8b5cf6' };
+  if(pct < 60) return { level:4, name:'Automator', color:'#06b6d4' };
+  if(pct < 80) return { level:5, name:'Engineer', color:'#22c55e' };
+  if(pct < 100) return { level:6, name:'Senior SDET', color:'#f59e0b' };
+  return { level:7, name:'SDET Pro', color:'#ef4444' };
+}
+
+function calcDeliverableProgress(member) {
+  const del = member.deliverables || {};
+  let completed = 0;
+  DELIVERABLES.forEach((_,i) => { if(del[i]) completed++; });
+  return { total: TOTAL_DELIVERABLES, completed, pct: TOTAL_DELIVERABLES ? Math.round(completed/TOTAL_DELIVERABLES*100) : 0 };
+}
+
+function getCombinedPct(member) {
+  const tp = calcProgress(member);
+  const ep = calcExerciseProgress(member);
+  const dp = calcDeliverableProgress(member);
+  const totalAll = tp.total + ep.total + dp.total;
+  const doneAll = tp.completed + ep.completed + dp.completed;
+  return totalAll ? Math.round(doneAll / totalAll * 100) : 0;
+}
+
+function showView(name, extra) {
+  const admin = isAdminMode();
+  const memberId = getMemberParam();
+  if(name==='dashboard' && !admin) return;
+  if(name==='team' && !memberId) return;
+  document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+  document.getElementById('view-'+name).classList.add('active');
+  if(name==='dashboard') renderDashboard();
+  if(name==='leaderboard') renderLeaderboard();
+  if(name==='individual' && extra) renderIndividual(extra);
+  if(name==='team') renderTeamDashboard(memberId);
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'), 3000);
+}
+
+function progressColor(pct) {
+  if(pct < 25) return '#2563eb';
+  if(pct < 50) return '#8b5cf6';
+  if(pct < 75) return '#0891b2';
+  return '#22c55e';
+}
+
+function showCongrats(modName, modNum) {
+  const overlay = document.getElementById('congratsOverlay');
+  document.getElementById('congratsIcon').textContent = MODULE_ICONS[parseInt(modNum)] || '🏅';
+  document.getElementById('congratsTitle').textContent = 'Module Complete!';
+  document.getElementById('congratsSub').innerHTML = `You've mastered all topics and exercises in<br><strong>${modNum} — ${modName}</strong>`;
+  document.getElementById('congratsBadge').innerHTML = MODULE_ICONS[parseInt(modNum)] + ' ' + modName + ' Badge Earned';
+  overlay.classList.add('show');
+  spawnConfetti();
+}
+function closeCongrats() { document.getElementById('congratsOverlay').classList.remove('show'); }
+function closeCongratsIfBg(e) { if(e.target===e.currentTarget) closeCongrats(); }
+
+function spawnConfetti() {
+  const emojis = ['🎉','✨','🌟','💫','🎊','⭐','🏅'];
+  const modal = document.getElementById('congratsModal');
+  for(let i=0;i<12;i++){
+    const c = document.createElement('span');
+    c.className='confetti';
+    c.textContent = emojis[Math.floor(Math.random()*emojis.length)];
+    c.style.left = Math.random()*100+'%';
+    c.style.top = '-20px';
+    c.style.animationDelay = (Math.random()*.8)+'s';
+    modal.appendChild(c);
+    setTimeout(()=>c.remove(),3000);
+  }
+}
+
+function renderDashboard() {
+  const data = getData();
+  const members = data.members;
+  const n = members.length;
+  const avgPct = n ? Math.round(members.reduce((s,m)=>s+getCombinedPct(m),0)/n) : 0;
+  const avgTopics = n ? Math.round(members.reduce((s,m)=>s+calcProgress(m).completed,0)/n*10)/10 : 0;
+  const avgEx = n ? Math.round(members.reduce((s,m)=>s+calcExerciseProgress(m).completed,0)/n*10)/10 : 0;
+  const avgDel = n ? Math.round(members.reduce((s,m)=>s+calcDeliverableProgress(m).completed,0)/n*10)/10 : 0;
+  const avgMods = n ? Math.round(members.reduce((s,m)=>s+getCompletedModules(m).length,0)/n*10)/10 : 0;
+
+  document.getElementById('globalStats').innerHTML = `
+    <div class="stat-card"><div class="stat-num" style="color:var(--blue-light)">${n}</div><div class="stat-label">Members</div></div>
+    <div class="stat-card"><div class="stat-num" style="color:var(--green)">${avgPct}%</div><div class="stat-label">Avg Progress</div></div>
+    <div class="stat-card"><div class="stat-num" style="color:var(--yellow)">${avgTopics}<span style="font-size:.6em;color:var(--text-dim)">/${TOTAL_TOPICS}</span></div><div class="stat-label">Avg Topics</div></div>
+    <div class="stat-card"><div class="stat-num" style="color:var(--purple)">${avgEx}<span style="font-size:.6em;color:var(--text-dim)">/${TOTAL_EXERCISES}</span></div><div class="stat-label">Avg Exercises</div></div>
+    <div class="stat-card"><div class="stat-num" style="color:#f97316">${avgDel}<span style="font-size:.6em;color:var(--text-dim)">/${TOTAL_DELIVERABLES}</span></div><div class="stat-label">Avg Deliverables</div></div>
+    <div class="stat-card"><div class="stat-num" style="color:var(--text-muted)">${avgMods}<span style="font-size:.6em;color:var(--text-dim)">/13</span></div><div class="stat-label">Avg Modules</div></div>
+  `;
+
+  const grid = document.getElementById('qaGrid');
+  if(!members.length) {
+    grid.innerHTML = `<div class="empty" style="grid-column:1/-1"><div class="empty-icon">👥</div><h3>No team members yet</h3><p>Add your QA engineers to start tracking their progress.</p></div>`;
+    return;
+  }
+
+  grid.innerHTML = members.map((m,i)=>{
+    const combPct = getCombinedPct(m);
+    const { completed } = calcProgress(m);
+    const ep = calcExerciseProgress(m);
+    const dp = calcDeliverableProgress(m);
+    const color = progressColor(combPct);
+    const lv = getLevel(combPct);
+    const completedMods = getCompletedModules(m);
+    const emoji = getAvatar(m, i);
+    return `<div class="qa-card" onclick="showView('individual','${m.id}')">
+      <div class="qa-card-top">
+        <div class="qa-avatar" style="background:${color}22;color:${color};font-size:20px">${emoji}</div>
+        <div class="qa-info">
+          <div class="qa-name">${m.name}</div>
+          <div class="qa-role">QA → SDET${m.email?' · '+m.email:''}</div>
+        </div>
+        <div class="qa-pct" style="color:${color}">${combPct}%</div>
+      </div>
+      <div class="progress-bar"><div class="progress-fill" style="width:${combPct}%;background:${color}"></div></div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+        <span style="font-size:11px;color:var(--text-muted)">${completed}/${TOTAL_TOPICS} topics &middot; ${ep.completed}/${TOTAL_EXERCISES} ex &middot; ${dp.completed}/${TOTAL_DELIVERABLES} deliverables</span>
+        <span class="badge badge-blue" style="background:${lv.color}22;color:${lv.color};border-color:${lv.color}44">Lv.${lv.level} ${lv.name}</span>
+      </div>
+      <div class="qa-modules">
+        ${CURRICULUM.map((mod,mi)=>{
+          const tp = calcModuleProgress(m, mod);
+          const ep2 = calcModuleExerciseProgress(m, mod);
+          const full = tp.completed===tp.total && ep2.completed===ep2.total && tp.total>0;
+          const partial = tp.completed>0 || ep2.completed>0;
+          return `<div class="module-dot" title="${mod.num} ${mod.name}" style="background:${full ? MODULE_COLORS[mi] : partial ? MODULE_COLORS[mi]+'66' : 'var(--border)'}"></div>`;
+        }).join('')}
+      </div>
+      ${completedMods.length ? `<div class="badges-row">${completedMods.slice(0,4).map(mod=>`<span class="badge badge-gold">${MODULE_ICONS[parseInt(mod.num)]} ${mod.num}</span>`).join('')}${completedMods.length>4?`<span class="badge badge-gold">+${completedMods.length-4}</span>`:''}</div>` : ''}
+      <div style="margin-top:8px;display:flex;justify-content:flex-end;gap:6px">
+        <button class="btn btn-outline btn-sm" style="font-size:10px;padding:3px 8px" onclick="event.stopPropagation();copyMemberLink('${m.id}','${m.name}')">Copy Link</button>
+        <button class="btn btn-outline btn-sm" style="font-size:10px;padding:3px 8px" onclick="event.stopPropagation();openEditModal('${m.id}')">Edit</button>
+        <button class="btn btn-outline btn-sm" style="font-size:10px;padding:3px 8px;color:var(--red);border-color:rgba(239,68,68,.3)" onclick="event.stopPropagation();openDeleteModal('${m.id}')">Delete</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderLeaderboard() {
+  const data = getData();
+  const mm = isMemberMode();
+  const currentId = getMemberParam();
+  const sorted = [...data.members].map((m,i)=>({...m,_i:i})).sort((a,b)=>getCombinedPct(b)-getCombinedPct(a));
+  const medals = ['🥇','🥈','🥉'];
+
+  const labelEl = document.getElementById('lbViewLabel');
+  if(labelEl) labelEl.innerHTML = `<span style="font-size:11px;padding:4px 10px;border-radius:6px;background:${mm?'var(--blue-dim)':'var(--purple-dim)'};color:${mm?'var(--blue-light)':'var(--purple)'};border:1px solid ${mm?'var(--blue-border)':'rgba(168,85,247,.3)'};font-weight:600">${mm?'MEMBER VIEW':'ADMIN VIEW'}</span>`;
+
+  document.getElementById('lbList').innerHTML = sorted.length ? sorted.map((m,rank)=>{
+    const pct = getCombinedPct(m);
+    const tp = calcProgress(m);
+    const ep = calcExerciseProgress(m);
+    const dp = calcDeliverableProgress(m);
+    const color = progressColor(pct);
+    const emoji = getAvatar(m, m._i);
+    const lv = getLevel(pct);
+    const completedMods = getCompletedModules(m);
+    const isMe = mm && m.id===currentId;
+    return `<div class="lb-row" ${mm?'':'onclick="showView(\'individual\',\''+m.id+'\')"'} style="${isMe?'border-color:var(--blue-border);background:var(--blue-dim)':''}${mm?';cursor:default':''}">
+      <div class="lb-rank">${medals[rank] || rank+1}</div>
+      <div class="lb-avatar" style="background:${color}22;color:${color};font-size:16px">${emoji}</div>
+      <div class="lb-name">
+        <div>${m.name}${isMe?' <span style="font-size:10px;color:var(--blue-light)">(you)</span>':''}</div>
+        <div style="font-size:11px;color:${lv.color};font-weight:600">Lv.${lv.level} ${lv.name}</div>
+        ${completedMods.length ? `<div style="font-size:10px;margin-top:2px">${completedMods.map(mod=>MODULE_ICONS[parseInt(mod.num)]).join(' ')}</div>` : ''}
+      </div>
+      <div class="lb-bar-wrap">
+        <div class="lb-bar"><div class="lb-fill" style="width:${pct}%;background:${color}"></div></div>
+        <div style="font-size:10px;color:var(--text-dim);margin-top:2px">${tp.completed} topics &middot; ${ep.completed} ex &middot; ${dp.completed}/${TOTAL_DELIVERABLES} 📦</div>
+      </div>
+      <div class="lb-pct" style="color:${color}">${pct}%</div>
+    </div>`;
+  }).join('') : `<div class="empty"><div class="empty-icon">🏆</div><h3>No members yet</h3><p>Add team members from the dashboard.</p></div>`;
+}
+
+let _currentMemberId = null;
+
+function renderIndividual(memberId) {
+  _currentMemberId = memberId;
+  const member = getMember(memberId);
+  if(!member) return;
+  const data = getData();
+  const idx = data.members.findIndex(m=>m.id===memberId);
+  const emoji = getAvatar(member, idx);
+  const combPct = getCombinedPct(member);
+  const tp = calcProgress(member);
+  const ep = calcExerciseProgress(member);
+  const dp = calcDeliverableProgress(member);
+  const color = progressColor(combPct);
+  const lv = getLevel(combPct);
+  const completedMods = getCompletedModules(member);
+
+  const memberMode = isMemberMode();
+  const backBtn = document.getElementById('backBtn');
+  if(backBtn) backBtn.style.display = memberMode ? 'none' : '';
+
+  const content = document.getElementById('individualContent');
+  content.innerHTML = `
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
+      <span style="font-size:11px;padding:4px 10px;border-radius:6px;background:var(--blue-dim);color:var(--blue-light);border:1px solid var(--blue-border);font-weight:600">MEMBER VIEW</span>
+      <span style="font-size:12px;color:var(--text-dim)">${memberMode ? 'Your personal tracking dashboard' : 'This is the tracking view for the team member'}</span>
+    </div>
+    <div class="profile-header">
+      <div class="profile-avatar" style="background:${color}22;color:${color};font-size:28px">${emoji}</div>
+      <div style="flex:1">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <div class="profile-name">${member.name}</div>
+          <span class="badge badge-blue" style="background:${lv.color}22;color:${lv.color};border-color:${lv.color}44;font-size:11px">Lv.${lv.level} ${lv.name}</span>
+        </div>
+        <div style="color:var(--text-muted);font-size:13px;margin-top:2px">QA → SDET${member.email?' · '+member.email:''}</div>
+        <div id="profileStats" style="display:flex;gap:20px;margin-top:10px;flex-wrap:wrap">
+          <div><span style="font-size:1.1rem;font-weight:800">${tp.completed}</span><span style="font-size:11px;color:var(--text-muted)"> / ${TOTAL_TOPICS} topics</span></div>
+          <div><span style="font-size:1.1rem;font-weight:800;color:var(--yellow)">${ep.completed}</span><span style="font-size:11px;color:var(--text-muted)"> / ${TOTAL_EXERCISES} exercises</span></div>
+          <div><span style="font-size:1.1rem;font-weight:800;color:#f97316">${dp.completed}</span><span style="font-size:11px;color:var(--text-muted)"> / ${TOTAL_DELIVERABLES} deliverables</span></div>
+          <div><span style="font-size:1.1rem;font-weight:800;color:var(--purple)">${completedMods.length}</span><span style="font-size:11px;color:var(--text-muted)"> / 13 modules</span></div>
+        </div>
+        <div class="big-progress">
+          <div class="big-progress-fill" id="mainProgressFill" style="width:${combPct}%;background:linear-gradient(90deg,${color},${color}cc)"></div>
+        </div>
+        <div class="progress-label" id="mainProgressLabel">
+          <span>Combined progress</span>
+          <span style="color:${color};font-weight:700">${combPct}%</span>
+        </div>
+      </div>
+      <div class="profile-badges-section" id="badgesSection">
+        <h4>Module Badges</h4>
+        <div class="profile-badge-grid">
+          ${CURRICULUM.map((mod,mi)=>{
+            const earned = completedMods.some(cm=>cm.id===mod.id);
+            return `<div class="profile-badge ${earned?'earned':'locked'}" id="badge_${mod.id}" title="${mod.num} ${mod.name}${earned?' - COMPLETE':''}">
+              ${MODULE_ICONS[mi]} <span>${mod.num}</span>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-bottom:20px;display:flex;gap:10px;flex-wrap:wrap">
+      <button class="btn btn-outline btn-sm" onclick="expandAll()">Expand All</button>
+      <button class="btn btn-outline btn-sm" onclick="collapseAll()">Collapse All</button>
+      ${memberMode ? '' : `<button class="btn btn-outline btn-sm" onclick="copyMemberLink('${memberId}','${member.name}')" style="color:var(--green);border-color:var(--green-border)">Copy Member Link</button>`}
+      ${memberMode ? '' : `<button class="btn btn-outline btn-sm" style="color:var(--red);border-color:rgba(239,68,68,.3)" onclick="confirmReset('${memberId}')">Reset Progress</button>`}
+    </div>
+
+    <div class="module-section" id="deliverablesSection">
+      <div class="module-header-row" onclick="document.getElementById('deliverablesSection').classList.toggle('open')">
+        <svg class="module-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 18l6-6-6-6"/></svg>
+        <span class="module-num" style="background:#f9731622;color:#f97316">📦</span>
+        <span class="module-name" id="delName" style="${dp.completed===TOTAL_DELIVERABLES?'color:var(--green)':''}">📦 Deliverables${dp.completed===TOTAL_DELIVERABLES?' ✓':''}</span>
+        <span class="module-progress-text" id="delProgress">${dp.completed}/${TOTAL_DELIVERABLES} submitted</span>
+        <div class="module-mini-bar"><div class="module-mini-fill" id="delBar" style="width:${dp.pct}%;background:#f97316"></div></div>
+      </div>
+      <div class="module-body" id="delBody">
+        <div style="font-size:12px;color:var(--text-dim);margin-bottom:12px;padding:4px 0">Mark each deliverable as submitted once you finish and send it.</div>
+        ${DELIVERABLES.map((d,i)=>{
+          const done = member.deliverables?.[i] || false;
+          const mod = CURRICULUM.find(m=>m.id===d.modId);
+          return '<div class="topic-row'+(done?' done':'')+'" id="dr_'+i+'">'+
+            '<div class="topic-check'+(done?' done':'')+'" onclick="toggleDeliverable(\''+memberId+'\','+i+')" id="dc_'+i+'" style="border-color:'+(done?'#f97316':'var(--border-light)')+';background:'+(done?'#f97316':'transparent')+'"></div>'+
+            '<div class="topic-info">'+
+              '<div class="topic-name">'+d.title+'</div>'+
+              '<div class="topic-module-tag">Module '+(mod?mod.num:'??')+' — '+d.desc+'</div>'+
+            '</div>'+
+            '<div class="topic-xp" id="dxp_'+i+'">'+(done?'✓ Submitted':'◻ Pending')+'</div>'+
+          '</div>';
+        }).join('')}
+      </div>
+    </div>
+
+    <div style="margin-top:4px"></div>
+    <div id="moduleList">
+      ${CURRICULUM.map(mod=>{
+        const mp = calcModuleProgress(member, mod);
+        const mep = calcModuleExerciseProgress(member, mod);
+        const modColor = MODULE_COLORS[parseInt(mod.num)];
+        const allDone = mp.completed===mp.total && mep.completed===mep.total;
+        const combModPct = (mp.total+mep.total) ? Math.round((mp.completed+mep.completed)/(mp.total+mep.total)*100) : 0;
+        return `<div class="module-section" id="ms_${mod.id}">
+          <div class="module-header-row" onclick="toggleModule('${mod.id}')">
+            <svg class="module-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 18l6-6-6-6"/></svg>
+            <span class="module-num">${mod.num}</span>
+            <span class="module-name" id="mn_${mod.id}" style="${allDone?'color:var(--green)':''}">${MODULE_ICONS[parseInt(mod.num)]} ${mod.name}${allDone?' ✓':''}</span>
+            <span class="module-progress-text" id="mpt_${mod.id}">${mp.completed}/${mp.total} topics &middot; ${mep.completed}/${mep.total} ex</span>
+            <div class="module-mini-bar"><div class="module-mini-fill" id="mmf_${mod.id}" style="width:${allDone?100:combModPct}%;background:${modColor}"></div></div>
+          </div>
+          <div class="module-body" id="mb_${mod.id}">
+            ${mod.topics.map((topic,ti)=>{
+              const done = member.done?.[mod.id]?.[ti] || false;
+              const todoDone = getTodoDoneCount(member, mod.id, ti);
+              const exComplete = isExerciseComplete(member, mod.id, ti);
+              return `<div class="topic-row${done?' done':''}" id="tr_${mod.id}_${ti}">
+                <div class="topic-check${done?' done':''}" onclick="toggleTopic('${memberId}','${mod.id}',${ti})" id="tc_${mod.id}_${ti}"></div>
+                <div class="topic-info">
+                  <div class="topic-name">${topic.name}</div>
+                  <div class="topic-module-tag" id="ttag_${mod.id}_${ti}">Module ${mod.num} &middot; Exercise: ${todoDone}/${topic.exercises.length} to-dos ${exComplete?'✓':''}</div>
+                  <div class="exercise-toggle" id="etog_${mod.id}_${ti}" onclick="event.stopPropagation();toggleExercises('${mod.id}',${ti})">▸ Show to-dos (${topic.exercises.length})</div>
+                  <div class="exercise-group" id="eg_${mod.id}_${ti}" style="display:none">
+                    ${topic.exercises.map((ex,ei)=>{
+                      const eDone = member.exDone?.[mod.id]?.[ti]?.[ei] || false;
+                      return `<div class="exercise-row${eDone?' done':''}" id="er_${mod.id}_${ti}_${ei}">
+                        <div class="exercise-check${eDone?' done':''}" onclick="event.stopPropagation();toggleExercise('${memberId}','${mod.id}',${ti},${ei})" id="ec_${mod.id}_${ti}_${ei}"></div>
+                        <div class="exercise-text">${ex}</div>
+                      </div>`;
+                    }).join('')}
+                  </div>
+                </div>
+                <div class="topic-xp" id="txp_${mod.id}_${ti}">${done?'✓ Done':'◻ Todo'}</div>
+              </div>`;
+            }).join('')}
+          </div>
+        </div>`;
+      }).join('')}
+    </div>
+
+    <div style="margin-top:32px">
+      <div class="section-header">
+        <span class="section-title">Team Leaderboard</span>
+      </div>
+      <div id="memberLeaderboard"></div>
+    </div>
+  `;
+
+  renderMemberLeaderboard(memberId);
+}
+
+function renderMemberLeaderboard(currentId) {
+  const data = getData();
+  const sorted = [...data.members].sort((a,b)=>getCombinedPct(b)-getCombinedPct(a));
+  const medals = ['🥇','🥈','🥉'];
+  const container = document.getElementById('memberLeaderboard');
+  if(!container) return;
+  container.innerHTML = sorted.map((m,rank)=>{
+    const pct = getCombinedPct(m);
+    const tp = calcProgress(m);
+    const ep = calcExerciseProgress(m);
+    const dp = calcDeliverableProgress(m);
+    const color = progressColor(pct);
+    const emoji = getAvatar(m, rank);
+    const lv = getLevel(pct);
+    const completedMods = getCompletedModules(m);
+    const isMe = m.id === currentId;
+    return `<div class="lb-row" style="${isMe?'border-color:var(--blue-border);background:var(--blue-dim)':''};cursor:default">
+      <div class="lb-rank">${medals[rank] || rank+1}</div>
+      <div class="lb-avatar" style="background:${color}22;color:${color};font-size:16px">${emoji}</div>
+      <div class="lb-name">
+        <div>${m.name}${isMe?' <span style="font-size:10px;color:var(--blue-light)">(you)</span>':''}</div>
+        <div style="font-size:11px;color:${lv.color};font-weight:600">Lv.${lv.level} ${lv.name}</div>
+        ${completedMods.length ? `<div style="font-size:10px;margin-top:2px">${completedMods.map(mod=>MODULE_ICONS[parseInt(mod.num)]).join(' ')}</div>` : ''}
+      </div>
+      <div class="lb-bar-wrap">
+        <div class="lb-bar"><div class="lb-fill" style="width:${pct}%;background:${color}"></div></div>
+        <div style="font-size:10px;color:var(--text-dim);margin-top:2px">${tp.completed} topics &middot; ${ep.completed} ex &middot; ${dp.completed}/${TOTAL_DELIVERABLES} 📦</div>
+      </div>
+      <div class="lb-pct" style="color:${color}">${pct}%</div>
+    </div>`;
+  }).join('');
+}
+
+function getCurrentModule(member) {
+  for(const mod of CURRICULUM) {
+    const tp = calcModuleProgress(member, mod);
+    const ep = calcModuleExerciseProgress(member, mod);
+    if(tp.completed < tp.total || ep.completed < ep.total) return mod;
+  }
+  return null;
+}
+
+function addActivity(data, type, memberId, detail) {
+  if(!data.activity) data.activity = [];
+  const member = data.members.find(m=>m.id===memberId);
+  data.activity.push({ type, memberId, name: member?member.name:'?', detail, ts: Date.now() });
+  if(data.activity.length > 100) data.activity = data.activity.slice(-100);
+}
+
+function timeAgo(ts) {
+  const diff = Date.now() - ts;
+  const mins = Math.floor(diff/60000);
+  if(mins<1) return 'just now';
+  if(mins<60) return mins+'m ago';
+  const hrs = Math.floor(mins/60);
+  if(hrs<24) return hrs+'h ago';
+  const days = Math.floor(hrs/24);
+  if(days<7) return days+'d ago';
+  return Math.floor(days/7)+'w ago';
+}
+
+function renderTeamDashboard(currentMemberId) {
+  const data = getData();
+  const members = data.members;
+  const activity = data.activity || [];
+  const currentMember = members.find(m=>m.id===currentMemberId);
+  const sorted = [...members].sort((a,b)=>getCombinedPct(b)-getCombinedPct(a));
+  const top3 = sorted.slice(0,3);
+
+  const tn = members.length;
+  const tAvgTopics = tn ? Math.round(members.reduce((s,m)=>s+calcProgress(m).completed,0)/tn*10)/10 : 0;
+  const tAvgEx = tn ? Math.round(members.reduce((s,m)=>s+calcExerciseProgress(m).completed,0)/tn*10)/10 : 0;
+  const tAvgDel = tn ? Math.round(members.reduce((s,m)=>s+calcDeliverableProgress(m).completed,0)/tn*10)/10 : 0;
+  const tAvgMods = tn ? Math.round(members.reduce((s,m)=>s+getCompletedModules(m).length,0)/tn*10)/10 : 0;
+
+  const memberModules = members.map(m=>({member:m, currentMod:getCurrentModule(m)}));
+
+  const modCounts = {};
+  memberModules.forEach(({currentMod})=>{ if(currentMod) modCounts[currentMod.id]=(modCounts[currentMod.id]||0)+1; });
+  let mostActiveMod=null, mostActiveCount=0;
+  Object.entries(modCounts).forEach(([modId,count])=>{ if(count>mostActiveCount){mostActiveCount=count;mostActiveMod=CURRICULUM.find(m=>m.id===modId);} });
+
+  const myMod = currentMember ? getCurrentModule(currentMember) : null;
+  const sameModMembers = myMod ? memberModules.filter(({member,currentMod})=>currentMod&&currentMod.id===myMod.id&&member.id!==currentMemberId) : [];
+
+  const weekAgo = Date.now()-7*24*60*60*1000;
+  const recentByMember = {};
+  activity.filter(a=>a.ts>weekAgo).forEach(a=>{ recentByMember[a.memberId]=(recentByMember[a.memberId]||0)+1; });
+  let mostImprovedId=null, mostImprovedCount=0;
+  Object.entries(recentByMember).forEach(([id,count])=>{ if(count>mostImprovedCount){mostImprovedCount=count;mostImprovedId=id;} });
+  const mostImproved = members.find(m=>m.id===mostImprovedId);
+
+  const recentActivity = [...activity].reverse().slice(0,15);
+  const milestones = activity.filter(a=>a.type==='module').reverse().slice(0,10);
+
+  const actIcons = {topic:'📘',exercise:'🔬',deliverable:'📦',module:'🏅'};
+  const actColors = {topic:'var(--blue-dim)',exercise:'var(--yellow-dim)',deliverable:'rgba(249,115,22,.12)',module:'rgba(234,179,8,.2)'};
+
+  const buildStep = (m,rank,cls)=>{
+    const pct=getCombinedPct(m);const color=progressColor(pct);const idx=members.indexOf(m);const emoji=getAvatar(m,idx);
+    const medals=['🥇','🥈','🥉'];const lv=getLevel(pct);
+    return `<div class="podium-step ${cls}">
+      <div class="podium-medal">${medals[rank]}</div>
+      <div class="podium-avatar" style="background:${color}22;color:${color}">${emoji}</div>
+      <div class="podium-name">${m.name}${m.id===currentMemberId?' <span style="font-size:10px;color:var(--blue-light)">(you)</span>':''}</div>
+      <div class="podium-pct" style="color:${color}">${pct}%</div>
+      <div style="font-size:11px;color:var(--text-dim);margin-top:2px">${lv.name}</div>
+    </div>`;
+  };
+
+  let podiumHtml='';
+  if(top3.length===1) podiumHtml=buildStep(top3[0],0,'gold');
+  else if(top3.length===2) podiumHtml=buildStep(top3[1],1,'silver')+buildStep(top3[0],0,'gold');
+  else if(top3.length>=3) podiumHtml=buildStep(top3[1],1,'silver')+buildStep(top3[0],0,'gold')+buildStep(top3[2],2,'bronze');
+
+  const container = document.getElementById('teamContent');
+  container.innerHTML = `
+    <div class="hero" style="padding-top:20px;padding-bottom:16px">
+      <h1 style="font-size:1.6rem">The SDET Journey</h1>
+      <p>${members.length} member${members.length!==1?'s':''} on the SDET journey</p>
+    </div>
+
+    ${top3.length?`<div style="margin-bottom:28px">
+      <div class="section-header"><span class="section-title">Top Performers</span></div>
+      <div class="podium">${podiumHtml}</div>
+    </div>`:''}
+
+    <div class="stats-row" style="margin-bottom:28px">
+      <div class="stat-card"><div class="stat-num" style="color:var(--blue-light)">${tAvgTopics}<span style="font-size:.6em;color:var(--text-dim)">/${TOTAL_TOPICS}</span></div><div class="stat-label">Avg Topics</div></div>
+      <div class="stat-card"><div class="stat-num" style="color:var(--yellow)">${tAvgEx}<span style="font-size:.6em;color:var(--text-dim)">/${TOTAL_EXERCISES}</span></div><div class="stat-label">Avg Exercises</div></div>
+      <div class="stat-card"><div class="stat-num" style="color:#f97316">${tAvgDel}<span style="font-size:.6em;color:var(--text-dim)">/${TOTAL_DELIVERABLES}</span></div><div class="stat-label">Avg Deliverables</div></div>
+      <div class="stat-card"><div class="stat-num" style="color:var(--green)">${tAvgMods}<span style="font-size:.6em;color:var(--text-dim)">/13</span></div><div class="stat-label">Avg Modules</div></div>
+    </div>
+
+    <div class="duo-grid">
+      ${mostActiveMod?`<div class="team-card">
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-dim);margin-bottom:10px">Most Active Module</div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <span style="font-size:24px">${MODULE_ICONS[parseInt(mostActiveMod.num)]}</span>
+          <div>
+            <div style="font-size:15px;font-weight:700">${mostActiveMod.num} — ${mostActiveMod.name}</div>
+            <div style="font-size:12px;color:var(--text-muted)">${mostActiveCount} member${mostActiveCount!==1?'s':''} currently here</div>
+          </div>
+        </div>
+      </div>`:'<div></div>'}
+
+      ${mostImproved?`<div class="team-card" style="border-color:rgba(239,68,68,.25)">
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-dim);margin-bottom:10px">Most Improved This Week</div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <span style="font-size:24px">🔥</span>
+          <div>
+            <div style="font-size:15px;font-weight:700">${mostImproved.name}${mostImproved.id===currentMemberId?' <span style="font-size:10px;color:var(--blue-light)">(you!)</span>':''}</div>
+            <div style="font-size:12px;color:var(--text-muted)">${mostImprovedCount} item${mostImprovedCount!==1?'s':''} completed this week</div>
+          </div>
+        </div>
+      </div>`:`<div class="team-card">
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-dim);margin-bottom:10px">Most Improved This Week</div>
+        <div style="font-size:13px;color:var(--text-muted);padding:8px 0">No activity recorded yet. Start checking topics!</div>
+      </div>`}
+    </div>
+
+    ${myMod?`<div class="team-card" style="border-color:var(--blue-border);margin-bottom:28px">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-dim);margin-bottom:10px">You're Currently In</div>
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:${sameModMembers.length?8:0}px">
+        <span style="font-size:24px">${MODULE_ICONS[parseInt(myMod.num)]}</span>
+        <div>
+          <div style="font-size:15px;font-weight:700">${myMod.num} — ${myMod.name}</div>
+          ${sameModMembers.length?`<div style="font-size:12px;color:var(--text-muted)">${sameModMembers.length} teammate${sameModMembers.length!==1?'s':''} also in this module</div>`:`<div style="font-size:12px;color:var(--text-muted)">You're the pioneer here!</div>`}
+        </div>
+      </div>
+      ${sameModMembers.length?`<div class="same-mod-avatars">${sameModMembers.map(({member:sm})=>`<div class="same-mod-avatar"><span>${getAvatar(sm,members.indexOf(sm))}</span> ${sm.name}</div>`).join('')}</div>`:''}
+    </div>`:''}
+
+    <div class="duo-grid">
+      <div>
+        <div class="section-header"><span class="section-title">Recent Activity</span></div>
+        <div class="team-card" style="padding:12px 16px">
+          ${recentActivity.length?`<div class="activity-list">${recentActivity.map(a=>`
+            <div class="activity-item">
+              <div class="activity-icon" style="background:${actColors[a.type]||'var(--bg-elevated)'}">${actIcons[a.type]||'📌'}</div>
+              <div class="activity-text"><strong>${a.name}${a.memberId===currentMemberId?' (you)':''}</strong> ${a.type==='module'?'completed module':'finished'} <span style="color:var(--text)">${a.detail}</span></div>
+              <div class="activity-time">${timeAgo(a.ts)}</div>
+            </div>`).join('')}</div>`:'<div style="font-size:13px;color:var(--text-muted);padding:16px 0;text-align:center">No activity yet. Start checking topics and exercises!</div>'}
+        </div>
+      </div>
+
+      <div>
+        <div class="section-header"><span class="section-title">Milestone Wall</span></div>
+        <div class="team-card" style="padding:12px 16px">
+          ${milestones.length?`<div class="activity-list">${milestones.map(a=>`
+            <div class="activity-item">
+              <div class="activity-icon" style="background:rgba(234,179,8,.2)">🏅</div>
+              <div class="activity-text"><strong>${a.name}</strong> earned the <span style="color:var(--yellow);font-weight:600">${a.detail}</span> badge</div>
+              <div class="activity-time">${timeAgo(a.ts)}</div>
+            </div>`).join('')}</div>`:'<div style="font-size:13px;color:var(--text-muted);padding:16px 0;text-align:center">No badges earned yet. Complete all topics + exercises in a module!</div>'}
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-bottom:28px">
+      <div class="section-header"><span class="section-title">Module Progress — Where is everyone?</span></div>
+      ${CURRICULUM.map((mod,mi)=>{
+        const inMod=memberModules.filter(({currentMod})=>currentMod&&currentMod.id===mod.id);
+        const completedCount=members.filter(m=>{const tp=calcModuleProgress(m,mod);const ep=calcModuleExerciseProgress(m,mod);return tp.completed===tp.total&&ep.completed===ep.total&&tp.total>0;}).length;
+        const avgPct=members.length?Math.round(members.reduce((s,m)=>{const tp=calcModuleProgress(m,mod);const ep=calcModuleExerciseProgress(m,mod);return s+((tp.completed+ep.completed)/(tp.total+ep.total)*100);},0)/members.length):0;
+        const isMyMod=myMod&&myMod.id===mod.id;
+        return `<div class="team-card" style="display:flex;align-items:center;gap:14px;padding:12px 16px;${isMyMod?'border-color:var(--blue-border);background:var(--blue-dim)':''}">
+          <span style="font-size:20px">${MODULE_ICONS[mi]}</span>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:13px;font-weight:600">${mod.num} — ${mod.name}${isMyMod?' <span style="font-size:10px;color:var(--blue-light)">(you are here)</span>':''}</div>
+            <div style="display:flex;align-items:center;gap:8px;margin-top:4px">
+              <div style="flex:1;height:4px;background:var(--border);border-radius:2px;overflow:hidden;max-width:120px">
+                <div style="width:${avgPct}%;height:100%;background:${MODULE_COLORS[mi]};border-radius:2px"></div>
+              </div>
+              <span style="font-size:11px;color:var(--text-dim)">${avgPct}% avg</span>
+            </div>
+          </div>
+          <div style="text-align:right;flex-shrink:0">
+            ${inMod.length?`<div style="font-size:11px;color:var(--blue-light);font-weight:600">${inMod.length} active</div>`:''}
+            ${completedCount?`<div style="font-size:11px;color:var(--green);font-weight:600">${completedCount} done</div>`:''}
+          </div>
+          ${inMod.length?`<div style="display:flex;gap:2px">${inMod.slice(0,5).map(({member:m2})=>`<span title="${m2.name}" style="font-size:14px">${getAvatar(m2,members.indexOf(m2))}</span>`).join('')}${inMod.length>5?`<span style="font-size:11px;color:var(--text-dim);align-self:center">+${inMod.length-5}</span>`:''}</div>`:''}
+        </div>`;
+      }).join('')}
+    </div>
+  `;
+}
+
+function toggleModule(modId) { document.getElementById('ms_'+modId).classList.toggle('open'); }
+function expandAll() { document.querySelectorAll('.module-section').forEach(el=>el.classList.add('open')); }
+function collapseAll() { document.querySelectorAll('.module-section').forEach(el=>el.classList.remove('open')); }
+
+function toggleExercises(modId, ti) {
+  const eg = document.getElementById('eg_'+modId+'_'+ti);
+  const toggle = document.getElementById('etog_'+modId+'_'+ti);
+  const mod = CURRICULUM.find(m=>m.id===modId);
+  const count = mod.topics[ti].exercises.length;
+  if(eg.style.display==='none') {
+    eg.style.display='block';
+    toggle.textContent = '▾ Hide to-dos (' + count + ')';
+  } else {
+    eg.style.display='none';
+    toggle.textContent = '▸ Show to-dos (' + count + ')';
+  }
+}
+
+function refreshHeaderStats(memberId) {
+  const member = getMember(memberId);
+  if(!member) return;
+  const combPct = getCombinedPct(member);
+  const tp = calcProgress(member);
+  const ep = calcExerciseProgress(member);
+  const color = progressColor(combPct);
+  const completedMods = getCompletedModules(member);
+
+  const dp = calcDeliverableProgress(member);
+
+  const stats = document.getElementById('profileStats');
+  if(stats) stats.innerHTML = `
+    <div><span style="font-size:1.1rem;font-weight:800">${tp.completed}</span><span style="font-size:11px;color:var(--text-muted)"> / ${TOTAL_TOPICS} topics</span></div>
+    <div><span style="font-size:1.1rem;font-weight:800;color:var(--yellow)">${ep.completed}</span><span style="font-size:11px;color:var(--text-muted)"> / ${TOTAL_EXERCISES} exercises</span></div>
+    <div><span style="font-size:1.1rem;font-weight:800;color:#f97316">${dp.completed}</span><span style="font-size:11px;color:var(--text-muted)"> / ${TOTAL_DELIVERABLES} deliverables</span></div>
+    <div><span style="font-size:1.1rem;font-weight:800;color:var(--purple)">${completedMods.length}</span><span style="font-size:11px;color:var(--text-muted)"> / 13 modules</span></div>`;
+
+  const fill = document.getElementById('mainProgressFill');
+  if(fill) { fill.style.width = combPct+'%'; fill.style.background = `linear-gradient(90deg,${color},${color}cc)`; }
+
+  const label = document.getElementById('mainProgressLabel');
+  if(label) label.innerHTML = `<span>Combined progress</span><span style="color:${color};font-weight:700">${combPct}%</span>`;
+
+  CURRICULUM.forEach(mod=>{
+    const badge = document.getElementById('badge_'+mod.id);
+    if(!badge) return;
+    const earned = completedMods.some(cm=>cm.id===mod.id);
+    badge.className = 'profile-badge ' + (earned?'earned':'locked');
+  });
+}
+
+function refreshModuleHeader(member, modId) {
+  const mod = CURRICULUM.find(m=>m.id===modId);
+  if(!mod) return;
+  const mp = calcModuleProgress(member, mod);
+  const mep = calcModuleExerciseProgress(member, mod);
+  const allDone = mp.completed===mp.total && mep.completed===mep.total;
+  const combModPct = (mp.total+mep.total) ? Math.round((mp.completed+mep.completed)/(mp.total+mep.total)*100) : 0;
+
+  const nameEl = document.getElementById('mn_'+modId);
+  if(nameEl) { nameEl.style.color = allDone?'var(--green)':''; nameEl.textContent = MODULE_ICONS[parseInt(mod.num)]+' '+mod.name+(allDone?' ✓':''); }
+
+  const progEl = document.getElementById('mpt_'+modId);
+  if(progEl) progEl.textContent = mp.completed+'/'+mp.total+' topics · '+mep.completed+'/'+mep.total+' ex';
+
+  const barEl = document.getElementById('mmf_'+modId);
+  if(barEl) barEl.style.width = (allDone?100:combModPct)+'%';
+}
+
+function toggleTopic(memberId, modId, topicIdx) {
+  const data = getData();
+  const m = data.members.find(m=>m.id===memberId);
+  if(!m) return;
+  if(!m.done) m.done = {};
+  if(!m.done[modId]) m.done[modId] = {};
+  m.done[modId][topicIdx] = !m.done[modId][topicIdx];
+  const isDone = m.done[modId][topicIdx];
+  if(isDone){const mod=CURRICULUM.find(md=>md.id===modId);if(mod)addActivity(data,'topic',memberId,mod.topics[topicIdx].name);}
+  saveData(data);
+
+  const check = document.getElementById('tc_'+modId+'_'+topicIdx);
+  const row = document.getElementById('tr_'+modId+'_'+topicIdx);
+  const xp = document.getElementById('txp_'+modId+'_'+topicIdx);
+  if(check) check.classList.toggle('done', isDone);
+  if(row) row.classList.toggle('done', isDone);
+  if(xp) xp.textContent = isDone ? '✓ Done' : '◻ Todo';
+
+  refreshModuleHeader(m, modId);
+  refreshHeaderStats(memberId);
+  checkModuleCompletion(m, modId);
+  if(isDone) showToast(MOTIVATIONAL[Math.floor(Math.random()*MOTIVATIONAL.length)]);
+}
+
+function toggleExercise(memberId, modId, topicIdx, exIdx) {
+  const data = getData();
+  const m = data.members.find(m=>m.id===memberId);
+  if(!m) return;
+  if(!m.exDone) m.exDone = {};
+  if(!m.exDone[modId]) m.exDone[modId] = {};
+  if(!m.exDone[modId][topicIdx]) m.exDone[modId][topicIdx] = {};
+  m.exDone[modId][topicIdx][exIdx] = !m.exDone[modId][topicIdx][exIdx];
+  const isDone = m.exDone[modId][topicIdx][exIdx];
+  if(isDone && isExerciseComplete(m,modId,topicIdx)){const mod=CURRICULUM.find(md=>md.id===modId);if(mod)addActivity(data,'exercise',memberId,mod.topics[topicIdx].name+' exercise');}
+  saveData(data);
+  const check = document.getElementById('ec_'+modId+'_'+topicIdx+'_'+exIdx);
+  const row = document.getElementById('er_'+modId+'_'+topicIdx+'_'+exIdx);
+  if(check) check.classList.toggle('done', isDone);
+  if(row) row.classList.toggle('done', isDone);
+
+  const mod = CURRICULUM.find(md=>md.id===modId);
+  const todoDone = getTodoDoneCount(m, modId, topicIdx);
+  const totalTodos = mod.topics[topicIdx].exercises.length;
+  const exComplete = isExerciseComplete(m, modId, topicIdx);
+  const tag = document.getElementById('ttag_'+modId+'_'+topicIdx);
+  if(tag) tag.textContent = 'Module '+mod.num+' · Exercise: '+todoDone+'/'+totalTodos+' to-dos '+(exComplete?'✓':'');
+
+  refreshModuleHeader(m, modId);
+  refreshHeaderStats(memberId);
+  checkModuleCompletion(m, modId);
+  if(isDone) showToast('To-do completed!');
+  if(exComplete && isDone) setTimeout(()=>showToast('Exercise complete! All to-dos done.'), 500);
+}
+
+function toggleDeliverable(memberId, delIdx) {
+  const data = getData();
+  const m = data.members.find(m=>m.id===memberId);
+  if(!m) return;
+  if(!m.deliverables) m.deliverables = {};
+  m.deliverables[delIdx] = !m.deliverables[delIdx];
+  const isDone = m.deliverables[delIdx];
+  if(isDone) addActivity(data,'deliverable',memberId,DELIVERABLES[delIdx].title);
+  saveData(data);
+
+  const check = document.getElementById('dc_'+delIdx);
+  const row = document.getElementById('dr_'+delIdx);
+  const xp = document.getElementById('dxp_'+delIdx);
+  if(check) { check.classList.toggle('done', isDone); check.style.borderColor = isDone?'#f97316':'var(--border-light)'; check.style.background = isDone?'#f97316':'transparent'; }
+  if(row) row.classList.toggle('done', isDone);
+  if(xp) xp.textContent = isDone ? '✓ Submitted' : '◻ Pending';
+
+  const dp = calcDeliverableProgress(m);
+  const delProg = document.getElementById('delProgress');
+  if(delProg) delProg.textContent = dp.completed+'/'+TOTAL_DELIVERABLES+' submitted';
+  const delBar = document.getElementById('delBar');
+  if(delBar) delBar.style.width = dp.pct+'%';
+  const delName = document.getElementById('delName');
+  if(delName) { delName.style.color = dp.completed===TOTAL_DELIVERABLES?'var(--green)':''; delName.textContent = '📦 Deliverables'+(dp.completed===TOTAL_DELIVERABLES?' ✓':''); }
+
+  refreshHeaderStats(memberId);
+  if(isDone) showToast('Deliverable submitted! 📦');
+}
+
+function checkModuleCompletion(member, modId) {
+  const mod = CURRICULUM.find(m=>m.id===modId);
+  if(!mod) return;
+  const tp = calcModuleProgress(member, mod);
+  const ep = calcModuleExerciseProgress(member, mod);
+  if(tp.completed===tp.total && ep.completed===ep.total && tp.total>0) {
+    const key = 'congrats_'+member.id+'_'+modId;
+    if(!localStorage.getItem(key)) {
+      localStorage.setItem(key, '1');
+      const data = JSON.parse(localStorage.getItem('sdet_tracker_v2')||'{"members":[]}');
+      addActivity(data, 'module', member.id, mod.name);
+      localStorage.setItem('sdet_tracker_v2', JSON.stringify(data));
+      setTimeout(()=>showCongrats(mod.name, mod.num), 400);
+    }
+  }
+}
+
+function confirmReset(memberId) {
+  if(!confirm('Reset all progress for this member? This cannot be undone.')) return;
+  const data = getData();
+  const m = data.members.find(m=>m.id===memberId);
+  if(m) {
+    m.done = {}; m.exDone = {}; m.deliverables = {};
+    CURRICULUM.forEach(mod=>localStorage.removeItem('congrats_'+m.id+'_'+mod.id));
+    saveData(data);
+    renderIndividual(memberId);
+  }
+}
+
+function addQA() {
+  const name = document.getElementById('newName').value.trim();
+  const email = document.getElementById('newEmail').value.trim();
+  if(!name) { document.getElementById('newName').focus(); return; }
+  if(!email) { document.getElementById('newEmail').focus(); return; }
+  const data = getData();
+  const avatar = AVATARS[Math.floor(Math.random()*AVATARS.length)];
+  data.members.push({ id: 'qa_'+Date.now(), name, email, role:'QA -> SDET', avatar, done: {}, exDone: {}, joinedAt: Date.now() });
+  saveData(data);
+  closeModal();
+  renderDashboard();
+  showToast(name+' added to the team!');
+}
+
+function closeModal() {
+  document.getElementById('addModal').classList.remove('show');
+  document.getElementById('newName').value = '';
+  document.getElementById('newEmail').value = '';
+}
+
+document.getElementById('addModal').addEventListener('click', e=>{ if(e.target===e.currentTarget) closeModal(); });
+document.getElementById('editModal').addEventListener('click', e=>{ if(e.target===e.currentTarget) closeEditModal(); });
+document.getElementById('deleteModal').addEventListener('click', e=>{ if(e.target===e.currentTarget) closeDeleteModal(); });
+document.addEventListener('keydown', e=>{
+  if(e.key==='Enter' && document.getElementById('addModal').classList.contains('show')) addQA();
+  if(e.key==='Enter' && document.getElementById('editModal').classList.contains('show')) saveEditQA();
+  if(e.key==='Escape') { closeModal(); closeEditModal(); closeDeleteModal(); document.getElementById('reportModal').classList.remove('show'); closeCongrats(); }
+});
+
+// ═══════════════════════════════════════════════════════
+// EDIT MEMBER
+// ═══════════════════════════════════════════════════════
+function openEditModal(memberId) {
+  const member = getMember(memberId);
+  if(!member) return;
+  document.getElementById('editId').value = memberId;
+  document.getElementById('editName').value = member.name;
+  document.getElementById('editEmail').value = member.email || '';
+  document.getElementById('editModal').classList.add('show');
+  setTimeout(()=>document.getElementById('editName').focus(), 100);
+}
+
+function closeEditModal() {
+  document.getElementById('editModal').classList.remove('show');
+  document.getElementById('editId').value = '';
+  document.getElementById('editName').value = '';
+  document.getElementById('editEmail').value = '';
+}
+
+function saveEditQA() {
+  const id = document.getElementById('editId').value;
+  const name = document.getElementById('editName').value.trim();
+  const email = document.getElementById('editEmail').value.trim();
+  if(!name) { document.getElementById('editName').focus(); return; }
+  const data = getData();
+  const m = data.members.find(m=>m.id===id);
+  if(!m) return;
+  m.name = name;
+  m.email = email;
+  saveData(data);
+  closeEditModal();
+  renderDashboard();
+  showToast(name + ' updated!');
+}
+
+// ═══════════════════════════════════════════════════════
+// DELETE MEMBER
+// ═══════════════════════════════════════════════════════
+function openDeleteModal(memberId) {
+  const member = getMember(memberId);
+  if(!member) return;
+  document.getElementById('deleteId').value = memberId;
+  document.getElementById('deleteName').textContent = member.name;
+  document.getElementById('deleteModal').classList.add('show');
+}
+
+function closeDeleteModal() {
+  document.getElementById('deleteModal').classList.remove('show');
+  document.getElementById('deleteId').value = '';
+}
+
+function confirmDeleteQA() {
+  const id = document.getElementById('deleteId').value;
+  const data = getData();
+  const idx = data.members.findIndex(m=>m.id===id);
+  if(idx === -1) return;
+  const name = data.members[idx].name;
+  CURRICULUM.forEach(mod=>localStorage.removeItem('congrats_'+id+'_'+mod.id));
+  data.members.splice(idx, 1);
+  saveData(data);
+  closeDeleteModal();
+  renderDashboard();
+  showToast(name + ' removed from the team.');
+}
+
+// ═══════════════════════════════════════════════════════
+// CSV EXPORT / IMPORT
+// ═══════════════════════════════════════════════════════
+function csvEscape(val) {
+  const s = String(val ?? '');
+  return s.includes(',') || s.includes('"') || s.includes('\n') ? '"' + s.replace(/"/g,'""') + '"' : s;
+}
+
+function exportCSV() {
+  const data = getData();
+  const headers = ['Name','Email','Progress %','Topics Done','Exercises Done','Deliverables Done','Modules Done','Joined','_id','_avatar','_done','_exDone','_deliverables'];
+  const rows = data.members.map(m => {
+    const tp = calcProgress(m);
+    const ep = calcExerciseProgress(m);
+    const dp = calcDeliverableProgress(m);
+    const mods = getCompletedModules(m).length;
+    return [
+      m.name, m.email || '', getCombinedPct(m),
+      tp.completed, ep.completed, dp.completed, mods,
+      m.joinedAt ? new Date(m.joinedAt).toISOString().slice(0,10) : '',
+      m.id, m.avatar || '',
+      JSON.stringify(m.done || {}),
+      JSON.stringify(m.exDone || {}),
+      JSON.stringify(m.deliverables || {})
+    ].map(csvEscape).join(',');
+  });
+  const csv = [headers.join(','), ...rows].join('\n');
+  const blob = new Blob([csv], {type:'text/csv'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'sdet_journey_' + new Date().toISOString().slice(0,10) + '.csv';
+  a.click();
+  URL.revokeObjectURL(a.href);
+  showToast('CSV exported!');
+}
+
+function triggerImportCSV() {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.csv';
+  input.onchange = e => {
+    const file = e.target.files[0];
+    if(!file) return;
+    const reader = new FileReader();
+    reader.onload = () => importCSV(reader.result);
+    reader.readAsText(file);
+  };
+  input.click();
+}
+
+function importCSV(text) {
+  const lines = text.trim().split('\n');
+  if(lines.length < 2) { showToast('CSV is empty or invalid.'); return; }
+
+  const header = lines[0].toLowerCase();
+  if(!header.includes('name') || !header.includes('_done')) {
+    showToast('Invalid CSV format. Use a file exported from this tracker.');return;
+  }
+
+  const parseRow = line => {
+    const cells = []; let cur = '', inQ = false;
+    for(let i = 0; i < line.length; i++) {
+      const c = line[i];
+      if(inQ) { if(c==='"' && line[i+1]==='"'){cur+='"';i++;} else if(c==='"'){inQ=false;} else {cur+=c;} }
+      else { if(c==='"'){inQ=true;} else if(c===','){cells.push(cur);cur='';} else {cur+=c;} }
+    }
+    cells.push(cur);
+    return cells;
+  };
+
+  const data = getData();
+  const existingIds = new Set(data.members.map(m=>m.id));
+  let added = 0, updated = 0;
+
+  for(let i = 1; i < lines.length; i++) {
+    if(!lines[i].trim()) continue;
+    const cols = parseRow(lines[i]);
+    const name = cols[0], email = cols[1];
+    const joined = cols[7], id = cols[8], avatar = cols[9];
+    let done = {}, exDone = {}, deliverables = {};
+    try { done = JSON.parse(cols[10] || '{}'); } catch(e){}
+    try { exDone = JSON.parse(cols[11] || '{}'); } catch(e){}
+    try { deliverables = JSON.parse(cols[12] || '{}'); } catch(e){}
+
+    if(!name) continue;
+
+    if(id && existingIds.has(id)) {
+      const m = data.members.find(x=>x.id===id);
+      m.name = name; m.email = email;
+      m.done = done; m.exDone = exDone; m.deliverables = deliverables;
+      if(avatar) m.avatar = avatar;
+      updated++;
+    } else {
+      data.members.push({
+        id: id || 'qa_'+Date.now()+'_'+i,
+        name, email, role:'QA -> SDET',
+        avatar: avatar || '',
+        done, exDone, deliverables,
+        joinedAt: joined ? new Date(joined).getTime() : Date.now()
+      });
+      added++;
+    }
+  }
+
+  saveData(data);
+  renderDashboard();
+  showToast(`Import done: ${added} added, ${updated} updated.`);
+}
+
+function openReport() {
+  const html = generateReportHtml();
+  document.getElementById('reportHtml').value = html;
+  document.getElementById('reportModal').classList.add('show');
+}
+
+function openReportTab() {
+  const html = generateReportHtml();
+  const w = window.open('', '_blank');
+  w.document.write(html);
+  w.document.close();
+}
+
+function copyReport() {
+  const ta = document.getElementById('reportHtml');
+  ta.select();
+  document.execCommand('copy');
+  showToast('Report HTML copied to clipboard!');
+}
+
+function generateReportHtml() {
+  const data = getData();
+  const sorted = [...data.members].sort((a,b)=>getCombinedPct(b)-getCombinedPct(a));
+  const rn = sorted.length;
+  const avgPct = rn ? Math.round(sorted.reduce((s,m)=>s+getCombinedPct(m),0)/rn) : 0;
+  const rAvgTopics = rn ? Math.round(sorted.reduce((s,m)=>s+calcProgress(m).completed,0)/rn*10)/10 : 0;
+  const rAvgEx = rn ? Math.round(sorted.reduce((s,m)=>s+calcExerciseProgress(m).completed,0)/rn*10)/10 : 0;
+  const rAvgDel = rn ? Math.round(sorted.reduce((s,m)=>s+calcDeliverableProgress(m).completed,0)/rn*10)/10 : 0;
+  const rAvgMods = rn ? Math.round(sorted.reduce((s,m)=>s+getCompletedModules(m).length,0)/rn*10)/10 : 0;
+  const dateStr = new Date().toLocaleDateString('en-US',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+  const medals = ['🥇','🥈','🥉'];
+
+  const emailBar = (pct, color, w) => `<table cellpadding="0" cellspacing="0" width="${w||120}" style="display:inline-table;vertical-align:middle"><tr><td style="background:#e5e7eb;border-radius:4px;height:8px;padding:0"><div style="width:${pct}%;height:8px;background:${color};border-radius:4px"></div></td></tr></table>`;
+
+  const rows = sorted.map((m,rank)=>{
+    const pct = getCombinedPct(m);
+    const tp = calcProgress(m);
+    const ep = calcExerciseProgress(m);
+    const dpR = calcDeliverableProgress(m);
+    const modsDone = getCompletedModules(m);
+    const lv = getLevel(pct);
+    const barColor = pct >= 75 ? '#22c55e' : pct >= 40 ? '#0891b2' : pct >= 20 ? '#7c3aed' : '#2563eb';
+    return `<tr style="border-bottom:1px solid #e5e7eb">
+      <td style="padding:12px 16px;font-weight:700;color:#374151">${rank+1}</td>
+      <td style="padding:12px 16px;font-weight:600;color:#111827">${m.name}</td>
+      <td style="padding:12px 16px;color:#6b7280">${m.email||''}</td>
+      <td style="padding:12px 16px">${emailBar(pct,barColor,80)} <span style="font-weight:700;color:${barColor}">${pct}%</span></td>
+      <td style="padding:12px 16px;color:#374151">${tp.completed}/${TOTAL_TOPICS}</td>
+      <td style="padding:12px 16px;color:#374151">${ep.completed}/${TOTAL_EXERCISES}</td>
+      <td style="padding:12px 16px;color:#374151">${dpR.completed}/${TOTAL_DELIVERABLES}</td>
+      <td style="padding:12px 16px;color:#374151">${modsDone.length}/13</td>
+      <td style="padding:12px 16px"><span style="color:${lv.color};font-size:11px;font-weight:700">${lv.name}</span></td>
+    </tr>`;
+  }).join('');
+
+  const lbRows = sorted.slice(0,10).map((m,rank)=>{
+    const pct = getCombinedPct(m);
+    const barColor = pct >= 75 ? '#22c55e' : pct >= 40 ? '#0891b2' : pct >= 20 ? '#7c3aed' : '#2563eb';
+    const tp = calcProgress(m);
+    const ep = calcExerciseProgress(m);
+    const dpR = calcDeliverableProgress(m);
+    const lv = getLevel(pct);
+    const completedMods = getCompletedModules(m);
+    const badgeIcons = completedMods.map(mod=>MODULE_ICONS[parseInt(mod.num)]).join(' ');
+    return `<tr style="border-bottom:1px solid #e5e7eb;${rank<3?'background:#fefce8':''}">
+      <td style="padding:14px 16px;font-size:18px;text-align:center;width:50px">${medals[rank]||rank+1}</td>
+      <td style="padding:14px 16px">
+        <div style="font-weight:700;color:#111827;font-size:14px">${m.name}</div>
+        <div style="font-size:11px;color:${lv.color};font-weight:600">Lv.${lv.level} ${lv.name}</div>
+      </td>
+      <td style="padding:14px 16px">
+        ${emailBar(pct,barColor,120)} <span style="font-weight:800;color:${barColor};font-size:16px">${pct}%</span>
+        <div style="font-size:11px;color:#9ca3af;margin-top:2px">${tp.completed} topics &middot; ${ep.completed} ex &middot; ${dpR.completed}/${TOTAL_DELIVERABLES} 📦</div>
+      </td>
+      <td style="padding:14px 16px;font-size:14px">${badgeIcons || '—'}</td>
+    </tr>`;
+  }).join('');
+
+  const moduleProgress = CURRICULUM.map(mod=>{
+    const totalDone = sorted.reduce((s,m)=>s+calcModuleProgress(m,mod).completed,0);
+    const totalExDone = sorted.reduce((s,m)=>s+calcModuleExerciseProgress(m,mod).completed,0);
+    const totalPossible = sorted.length * mod.topics.length;
+    const topicPct = totalPossible ? Math.round(totalDone/totalPossible*100) : 0;
+    const exPct = totalPossible ? Math.round(totalExDone/totalPossible*100) : 0;
+    return `<tr style="border-bottom:1px solid #f3f4f6">
+      <td style="padding:8px 16px;font-size:14px">${MODULE_ICONS[parseInt(mod.num)]}</td>
+      <td style="padding:8px 16px;font-weight:700;color:#6b7280;font-family:monospace;font-size:12px">${mod.num}</td>
+      <td style="padding:8px 16px;color:#374151;font-size:13px">${mod.name}</td>
+      <td style="padding:8px 16px">${emailBar(topicPct,'#2563eb',60)} <span style="font-size:12px;font-weight:600;color:#2563eb">${topicPct}%</span></td>
+      <td style="padding:8px 16px">${emailBar(exPct,'#eab308',60)} <span style="font-size:12px;font-weight:600;color:#b45309">${exPct}%</span></td>
+    </tr>`;
+  }).join('');
+
+  return `<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"><title>The SDET Journey — Weekly Report</title></head>
+<body style="font-family:Arial,Helvetica,sans-serif;background:#f9fafb;margin:0;padding:32px">
+  <table width="850" cellpadding="0" cellspacing="0" align="center" style="background:#fff;border-radius:12px;overflow:hidden;border:1px solid #e5e7eb">
+    <!-- Header -->
+    <tr><td style="background:linear-gradient(135deg,#1e3a8a,#2563eb);background-color:#1e3a8a;padding:32px;color:#fff">
+      <div style="font-size:12px;font-weight:600;letter-spacing:1px;text-transform:uppercase;opacity:.7;margin-bottom:6px">Weekly Progress Report</div>
+      <div style="font-size:28px;font-weight:800;margin-bottom:4px">The SDET Journey</div>
+      <div style="opacity:.8;font-size:14px">${dateStr}</div>
+    </td></tr>
+    <!-- Stats Row -->
+    <tr><td style="padding:0;background:#f8fafc;border-bottom:1px solid #e5e7eb">
+      <table width="100%" cellpadding="0" cellspacing="0">
+        <tr>
+          <td width="16.6%" style="padding:20px 8px;text-align:center;border-right:1px solid #e5e7eb">
+            <div style="font-size:28px;font-weight:800;color:#2563eb">${sorted.length}</div>
+            <div style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:#6b7280;margin-top:2px">Members</div>
+          </td>
+          <td width="16.6%" style="padding:20px 8px;text-align:center;border-right:1px solid #e5e7eb">
+            <div style="font-size:28px;font-weight:800;color:#22c55e">${avgPct}%</div>
+            <div style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:#6b7280;margin-top:2px">Avg Progress</div>
+          </td>
+          <td width="16.6%" style="padding:20px 8px;text-align:center;border-right:1px solid #e5e7eb">
+            <div style="font-size:28px;font-weight:800;color:#f59e0b">${rAvgTopics}<span style="font-size:14px;color:#9ca3af">/${TOTAL_TOPICS}</span></div>
+            <div style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:#6b7280;margin-top:2px">Avg Topics</div>
+          </td>
+          <td width="16.6%" style="padding:20px 8px;text-align:center;border-right:1px solid #e5e7eb">
+            <div style="font-size:28px;font-weight:800;color:#8b5cf6">${rAvgEx}<span style="font-size:14px;color:#9ca3af">/${TOTAL_EXERCISES}</span></div>
+            <div style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:#6b7280;margin-top:2px">Avg Exercises</div>
+          </td>
+          <td width="16.6%" style="padding:20px 8px;text-align:center;border-right:1px solid #e5e7eb">
+            <div style="font-size:28px;font-weight:800;color:#f97316">${rAvgDel}<span style="font-size:14px;color:#9ca3af">/${TOTAL_DELIVERABLES}</span></div>
+            <div style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:#6b7280;margin-top:2px">Avg Deliverables</div>
+          </td>
+          <td width="16.6%" style="padding:20px 8px;text-align:center">
+            <div style="font-size:28px;font-weight:800;color:#374151">${rAvgMods}<span style="font-size:14px;color:#9ca3af">/13</span></div>
+            <div style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:#6b7280;margin-top:2px">Avg Modules</div>
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+    <!-- Leaderboard -->
+    <tr><td style="padding:24px">
+      <div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#6b7280;margin-bottom:14px">Leaderboard</div>
+      <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse">
+        <thead><tr style="background:#f8fafc;border-bottom:2px solid #e5e7eb">
+          <th style="padding:10px 16px;text-align:center;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#6b7280">Rank</th>
+          <th style="padding:10px 16px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#6b7280">Name</th>
+          <th style="padding:10px 16px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#6b7280">Progress</th>
+          <th style="padding:10px 16px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#6b7280">Badges</th>
+        </tr></thead>
+        <tbody>${lbRows}</tbody>
+      </table>
+    </td></tr>
+    <!-- Individual Progress -->
+    <tr><td style="padding:0 24px 24px">
+      <div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#6b7280;margin-bottom:14px">Individual Progress</div>
+      <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse">
+        <thead><tr style="background:#f8fafc;border-bottom:2px solid #e5e7eb">
+          <th style="padding:10px 16px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#6b7280">#</th>
+          <th style="padding:10px 16px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#6b7280">Name</th>
+          <th style="padding:10px 16px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#6b7280">Email</th>
+          <th style="padding:10px 16px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#6b7280">Overall</th>
+          <th style="padding:10px 16px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#6b7280">Topics</th>
+          <th style="padding:10px 16px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#6b7280">Exercises</th>
+          <th style="padding:10px 16px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#6b7280">Deliverables</th>
+          <th style="padding:10px 16px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#6b7280">Modules</th>
+          <th style="padding:10px 16px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#6b7280">Level</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </td></tr>
+    <!-- Module Coverage -->
+    <tr><td style="padding:0 24px 24px">
+      <div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#6b7280;margin-bottom:14px">Module Coverage (Team Average)</div>
+      <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse">
+        <thead><tr style="border-bottom:1px solid #e5e7eb">
+          <th style="padding:6px 16px;font-size:11px;color:#6b7280;text-align:left"></th>
+          <th style="padding:6px 16px;font-size:11px;color:#6b7280;text-align:left">#</th>
+          <th style="padding:6px 16px;font-size:11px;color:#6b7280;text-align:left">Module</th>
+          <th style="padding:6px 16px;font-size:11px;color:#6b7280;text-align:left">Topics</th>
+          <th style="padding:6px 16px;font-size:11px;color:#6b7280;text-align:left">Exercises</th>
+        </tr></thead>
+        <tbody>${moduleProgress}</tbody>
+      </table>
+    </td></tr>
+    <!-- Footer -->
+    <tr><td style="background:#f8fafc;border-top:1px solid #e5e7eb;padding:16px 24px;font-size:12px;color:#9ca3af">
+      <table width="100%" cellpadding="0" cellspacing="0"><tr>
+        <td style="font-size:12px;color:#9ca3af">The SDET Journey — Unosquare</td>
+        <td style="font-size:12px;color:#9ca3af;text-align:right">Generated ${dateStr}</td>
+      </tr></table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+}
+
+// ═══════════════════════════════════════════════════════
+// MEMBER DIRECT LINK SUPPORT
+// ═══════════════════════════════════════════════════════
+function getUrlParams() {
+  return new URLSearchParams(window.location.search);
+}
+function getMemberParam() { return getUrlParams().get('member'); }
+function getAdminParam() { return getUrlParams().get('admin'); }
+
+function isMemberMode() { return !!getMemberParam(); }
+function isAdminMode() { return getAdminParam() === 'adminMS'; }
+
+function getMemberLink(memberId) {
+  return window.location.href.split('?')[0] + '?member=' + memberId;
+}
+
+function copyMemberLink(memberId, memberName) {
+  const link = getMemberLink(memberId);
+  navigator.clipboard.writeText(link).then(()=>{
+    showToast('Link copied for ' + memberName + '!');
+  }).catch(()=>{
+    prompt('Copy this link for ' + memberName + ':', link);
+  });
+}
+
+// ═══════════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════════
+(function init() {
+  const memberId = getMemberParam();
+  const admin = isAdminMode();
+  const nav = document.querySelector('.nav');
+  const navBtns = document.getElementById('navActions');
+
+  document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+
+  if(admin) {
+    // Admin mode
+    if(nav) nav.style.display = '';
+    if(navBtns) {
+      navBtns.innerHTML = `
+        <button class="btn btn-outline" onclick="showView('dashboard')">Dashboard</button>
+        <button class="btn btn-outline" onclick="showView('leaderboard')">Leaderboard</button>
+        <button class="btn btn-green" onclick="openReport()">Weekly Report</button>
+        <button class="btn btn-outline" onclick="exportCSV()" title="Download CSV backup" style="font-size:12px;padding:6px 10px">📥 Export</button>
+        <button class="btn btn-outline" onclick="triggerImportCSV()" title="Import CSV backup" style="font-size:12px;padding:6px 10px">📤 Import</button>
+      `;
+    }
+    showView('dashboard');
+
+  } else if(memberId) {
+    // Member mode
+    if(nav) nav.style.display = '';
+    if(navBtns) {
+      navBtns.innerHTML = `
+        <button class="btn btn-outline" onclick="showView('team')">Team</button>
+        <button class="btn btn-outline" onclick="showView('leaderboard')">Leaderboard</button>
+        <button class="btn btn-primary" onclick="showView('individual','${memberId}')">My Progress</button>
+      `;
+    }
+    const member = getMember(memberId);
+    if(member) {
+      showView('individual', memberId);
+    } else {
+      document.getElementById('view-locked').classList.add('active');
+      document.getElementById('view-locked').innerHTML = `
+        <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:60vh;text-align:center;padding:40px 20px">
+          <div style="font-size:64px;margin-bottom:20px">🔗</div>
+          <h2 style="color:var(--text);margin-bottom:8px">Member Not Found</h2>
+          <p style="color:var(--text-muted);max-width:400px">This link doesn't match any team member. Ask your lead for an updated link.</p>
+        </div>`;
+      if(nav) nav.style.display = 'none';
+    }
+
+  } else {
+    // No valid params — locked
+    if(nav) nav.style.display = 'none';
+    document.getElementById('view-locked').classList.add('active');
+  }
+})();
+</script>
+</body>
+</html>
