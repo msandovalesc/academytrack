@@ -26,8 +26,10 @@ db/                schema.sql, migrate.mjs, seed.mjs, curriculum-data.mjs, db.mj
 netlify.toml       publish + functions config (NO build command — must stay empty)
 ```
 
-Roles: the **first account to register becomes `admin`** (can create/edit paths and content);
-everyone after is a `learner`. The seed also creates an initial admin (see below).
+Roles (`users.role`):
+- **admin** — full control: create/edit paths and content, manage users, view everyone, reports. The **first account to register becomes admin**; the seed also creates one.
+- **mentor** — read-only oversight across *all* paths: leaderboard, team activity, any member's detailed progress, and weekly reports. Cannot edit content or change anyone's progress. Admins create mentors from the **Users** screen.
+- **learner** — tracks their own progress on paths they join.
 
 The app connects to the database through one environment variable, **`NETLIFY_DATABASE_URL`**
 (a Neon `postgresql://…` connection string). It's read by the deployed function and by the
@@ -103,6 +105,14 @@ npx netlify deploy --prod
 - `POST|DELETE /paths/:id/enroll` · `GET /paths/:id/members`
 - `POST /progress/topic` · `POST /progress/task` · `POST /progress/deliverable`
 - `GET /paths/:id/activity`
+- `GET /users` · `POST /users` · `PUT /users/:id/role` *(admin)*
+- `GET /paths/:id/members/:userId/progress` · `GET /paths/:id/report` *(admin + mentor)*
+
+## Roles & reports (UI)
+
+- **Users** screen (admin, top nav) — list everyone, change roles, and **+ Add mentor** (creates an account directly with email + temporary password).
+- **Mentors** open any path and get the Leaderboard + Team Activity tabs (no "My Progress"); clicking a member opens their read-only progress.
+- **Weekly report** (admin + mentor, in a path's top nav) — per-path summary of each member's progress and what they completed in the last 7 days. Open in a new tab to print/email, or copy the HTML.
 
 ## Admin operations
 

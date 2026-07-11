@@ -74,6 +74,13 @@ const requireAdmin = async (c: any, next: any) => {
   if (u.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
   await next();
 };
+// Staff = admin or mentor (read-only oversight of everyone).
+const requireStaff = async (c: any, next: any) => {
+  const u = c.get('user');
+  if (!u) return c.json({ error: 'Not authenticated' }, 401);
+  if (u.role !== 'admin' && u.role !== 'mentor') return c.json({ error: 'Staff only' }, 403);
+  await next();
+};
 
 // =====================================================================
 // AUTH
@@ -125,6 +132,60 @@ app.post('/auth/logout', (c) => {
 });
 
 app.get('/auth/me', requireAuth, (c) => c.json({ user: c.get('user') }));
+
+// =====================================================================
+// USERS (admin) — manage learners, mentors, admins
+// =====================================================================
+const VALID_ROLES = ['admin', 'mentor', 'learner'];
+
+app.get('/users', requireAdmin, async (c) => {
+  const sql = c.get('sql');
+  const rows = await sql`
+    SELECT id, email, name, avatar, role, created_at,
+      (SELECT count(*)::int FROM enrollments e WHERE e.user_id = users.id) AS path_count
+    FROM users
+    ORDER BY CASE role WHEN 'admin' THEN 0 WHEN 'mentor' THEN 1 ELSE 2 END, name`;
+  return c.json({ users: rows });
+});
+
+// Create an account directly (used to add mentors without them signing up).
+app.post('/users', requireAdmin, async (c) => {
+  const sql = c.get('sql');
+  const b = await c.req.json().catch(() => ({}));
+  const email = String(b.email || '').trim().toLowerCase();
+  const name = String(b.name || '').trim();
+  const password = String(b.password || '');
+  const role = VALID_ROLES.includes(b.role) ? b.role : 'learner';
+  if (!email || !name || password.length < 6) {
+    return c.json({ error: 'Name, email, and a password of at least 6 characters are required.' }, 400);
+  }
+  const existing = await sql`SELECT id FROM users WHERE email = ${email}`;
+  if (existing[0]) return c.json({ error: 'An account with that email already exists.' }, 409);
+  const hash = await bcrypt.hash(password, 10);
+  const avatar = role === 'mentor' ? '🧑‍🏫' : role === 'admin' ? '🦉' : '🙂';
+  const [u] = await sql`
+    INSERT INTO users (email, password_hash, name, role, avatar)
+    VALUES (${email}, ${hash}, ${name}, ${role}, ${avatar})
+    RETURNING id, email, name, avatar, role, created_at`;
+  return c.json({ user: u });
+});
+
+app.put('/users/:id/role', requireAdmin, async (c) => {
+  const sql = c.get('sql');
+  const id = Number(c.req.param('id'));
+  const b = await c.req.json().catch(() => ({}));
+  if (!VALID_ROLES.includes(b.role)) return c.json({ error: 'Invalid role' }, 400);
+  if (b.role !== 'admin') {
+    const [target] = await sql`SELECT role FROM users WHERE id = ${id}`;
+    const [{ admins }] = await sql`SELECT count(*)::int AS admins FROM users WHERE role = 'admin'`;
+    if (target && target.role === 'admin' && admins <= 1) {
+      return c.json({ error: 'Cannot change the role of the last admin.' }, 400);
+    }
+  }
+  const [u] = await sql`UPDATE users SET role = ${b.role} WHERE id = ${id} RETURNING id, email, name, avatar, role`;
+  if (!u) return c.json({ error: 'User not found' }, 404);
+  return c.json({ user: u });
+});
 
 // =====================================================================
 // PATHS + CONTENT
@@ -403,6 +464,66 @@ app.get('/paths/:id/members', requireAuth, async (c) => {
     WHERE e.path_id = ${id}
     ORDER BY u.name`;
   return c.json({ totals, members });
+});
+
+// A specific member's detailed progress on a path (staff-only oversight, read-only).
+app.get('/paths/:id/members/:userId/progress', requireStaff, async (c) => {
+  const sql = c.get('sql');
+  const id = Number(c.req.param('id'));
+  const userId = Number(c.req.param('userId'));
+  const [u] = await sql`SELECT id, name, email, avatar, role FROM users WHERE id = ${userId}`;
+  if (!u) return c.json({ error: 'User not found' }, 404);
+  const doneTopics = await sql`
+    SELECT tp.topic_id FROM topic_progress tp
+    JOIN topics t ON t.id = tp.topic_id JOIN modules m ON m.id = t.module_id
+    WHERE m.path_id = ${id} AND tp.user_id = ${userId} AND tp.done`;
+  const doneTasks = await sql`
+    SELECT tp.task_id FROM task_progress tp
+    JOIN tasks tk ON tk.id = tp.task_id JOIN topics t ON t.id = tk.topic_id JOIN modules m ON m.id = t.module_id
+    WHERE m.path_id = ${id} AND tp.user_id = ${userId} AND tp.done`;
+  const doneDelivs = await sql`
+    SELECT dp.deliverable_id FROM deliverable_progress dp
+    JOIN deliverables d ON d.id = dp.deliverable_id
+    WHERE d.path_id = ${id} AND dp.user_id = ${userId} AND dp.done`;
+  return c.json({
+    user: u,
+    progress: {
+      topics: doneTopics.map((r: any) => r.topic_id),
+      tasks: doneTasks.map((r: any) => r.task_id),
+      deliverables: doneDelivs.map((r: any) => r.deliverable_id),
+    },
+  });
+});
+
+// Weekly report data for a path (staff-only): totals, per-member progress, last-7-days activity.
+app.get('/paths/:id/report', requireStaff, async (c) => {
+  const sql = c.get('sql');
+  const id = Number(c.req.param('id'));
+  const [path] = await sql`SELECT * FROM learning_paths WHERE id = ${id}`;
+  if (!path) return c.json({ error: 'Path not found' }, 404);
+  const [totals] = await sql`
+    SELECT
+      (SELECT count(*)::int FROM topics t JOIN modules m ON m.id = t.module_id WHERE m.path_id = ${id}) AS topics,
+      (SELECT count(*)::int FROM tasks tk JOIN topics t ON t.id = tk.topic_id JOIN modules m ON m.id = t.module_id WHERE m.path_id = ${id}) AS tasks,
+      (SELECT count(*)::int FROM deliverables d WHERE d.path_id = ${id}) AS deliverables`;
+  const members = await sql`
+    SELECT u.id, u.name, u.email, u.avatar,
+      (SELECT count(*)::int FROM topic_progress tp JOIN topics t ON t.id = tp.topic_id JOIN modules m ON m.id = t.module_id
+        WHERE m.path_id = ${id} AND tp.user_id = u.id AND tp.done) AS topics_done,
+      (SELECT count(*)::int FROM task_progress tp JOIN tasks tk ON tk.id = tp.task_id JOIN topics t ON t.id = tk.topic_id JOIN modules m ON m.id = t.module_id
+        WHERE m.path_id = ${id} AND tp.user_id = u.id AND tp.done) AS tasks_done,
+      (SELECT count(*)::int FROM deliverable_progress dp JOIN deliverables d ON d.id = dp.deliverable_id
+        WHERE d.path_id = ${id} AND dp.user_id = u.id AND dp.done) AS deliverables_done,
+      (SELECT count(*)::int FROM activity a WHERE a.path_id = ${id} AND a.user_id = u.id AND a.created_at > now() - interval '7 days') AS week_count
+    FROM users u JOIN enrollments e ON e.user_id = u.id
+    WHERE e.path_id = ${id}
+    ORDER BY u.name`;
+  const weekActivity = await sql`
+    SELECT a.user_id, u.name AS user_name, a.type, a.detail, a.created_at
+    FROM activity a JOIN users u ON u.id = a.user_id
+    WHERE a.path_id = ${id} AND a.created_at > now() - interval '7 days'
+    ORDER BY a.created_at DESC LIMIT 1000`;
+  return c.json({ path, totals, members, weekActivity });
 });
 
 // =====================================================================

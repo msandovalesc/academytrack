@@ -153,7 +153,7 @@ function confirmModal(title, message, confirmLabel, onConfirm) {
 // ---------------------------------------------------------------- global state
 const state = {
   user: null,
-  view: 'loading',      // 'auth' | 'paths' | 'path' | 'admin'
+  view: 'loading',      // 'auth' | 'paths' | 'path' | 'admin' | 'users'
   authMode: 'login',
   paths: [],
   pathId: null,
@@ -164,8 +164,13 @@ const state = {
   totals: null,
   activity: null,
   openModules: new Set(),
+  users: [],            // admin Users screen
+  viewingMember: null,  // { user, done:{topics,tasks,deliverables} } read-only drill-down
 };
 const isAdmin = () => state.user && state.user.role === 'admin';
+const isMentor = () => state.user && state.user.role === 'mentor';
+const isStaff = () => isAdmin() || isMentor();          // admin or mentor: read-only oversight
+const isEnrolled = () => !!state.paths.find((p) => p.id === state.pathId && p.enrolled);
 
 // ---------------------------------------------------------------- boot + routing
 async function boot() {
@@ -187,6 +192,7 @@ function render() {
   if (state.view === 'paths') return renderPaths(app);
   if (state.view === 'path') return renderPath(app);
   if (state.view === 'admin') return renderAdmin(app);
+  if (state.view === 'users') return renderUsers(app);
 }
 
 function renderNav() {
@@ -196,13 +202,21 @@ function renderNav() {
   if (state.view !== 'paths') {
     parts.push(`<button class="btn btn-outline btn-sm" onclick="goPaths()">← All paths</button>`);
   }
+  if ((state.view === 'path' || state.view === 'admin') && isStaff()) {
+    parts.push(`<button class="btn btn-outline btn-sm" onclick="openReport(${state.pathId})">📊 Weekly report</button>`);
+  }
   if (state.view === 'path' && isAdmin()) {
     parts.push(`<button class="btn btn-outline btn-sm" onclick="goAdmin(${state.pathId})">✎ Manage content</button>`);
   }
   if (state.view === 'admin') {
     parts.push(`<button class="btn btn-outline btn-sm" onclick="openPath(${state.pathId})">👁 View as learner</button>`);
   }
-  parts.push(`<span style="font-size:13px;color:var(--text-muted);display:flex;align-items:center;gap:6px">${state.user.avatar || '🙂'} ${esc(state.user.name)}${isAdmin() ? ' <span class="badge badge-purple">admin</span>' : ''}</span>`);
+  if (isAdmin() && state.view !== 'users') {
+    parts.push(`<button class="btn btn-outline btn-sm" onclick="goUsers()">👥 Users</button>`);
+  }
+  const roleBadge = isAdmin() ? ' <span class="badge badge-purple">admin</span>'
+    : isMentor() ? ' <span class="badge badge-blue">mentor</span>' : '';
+  parts.push(`<span style="font-size:13px;color:var(--text-muted);display:flex;align-items:center;gap:6px">${state.user.avatar || '🙂'} ${esc(state.user.name)}${roleBadge}</span>`);
   parts.push(`<button class="btn btn-outline btn-sm" onclick="logout()">Log out</button>`);
   nav.innerHTML = parts.join('');
 }
@@ -291,10 +305,10 @@ function renderPaths(app) {
           <span>👥 ${p.member_count}</span>
         </div>
         <div class="path-actions">
-          <button class="btn btn-primary btn-sm" onclick="openPath(${p.id})">${p.enrolled ? 'Open' : 'Open'}</button>
-          ${p.enrolled
+          <button class="btn btn-primary btn-sm" onclick="openPath(${p.id})">Open</button>
+          ${isMentor() ? '' : (p.enrolled
             ? `<button class="btn btn-outline btn-sm" onclick="unenroll(${p.id})">Leave</button>`
-            : `<button class="btn btn-green btn-sm" onclick="enroll(${p.id})">Join</button>`}
+            : `<button class="btn btn-green btn-sm" onclick="enroll(${p.id})">Join</button>`)}
           ${admin ? `<button class="icon-btn" onclick="editPath(${p.id})">✎</button>
                      <button class="icon-btn danger" onclick="deletePath(${p.id})">🗑</button>` : ''}
         </div>
@@ -303,7 +317,7 @@ function renderPaths(app) {
 
   app.innerHTML = `
     <div class="view">
-      <div class="hero"><h1>Learning Paths</h1><p>Pick a path to track your progress, or join a new one.</p></div>
+      <div class="hero"><h1>Learning Paths</h1><p>${isMentor() ? 'Open any path to review progress, leaderboard and activity.' : 'Pick a path to track your progress, or join a new one.'}</p></div>
       <div class="section-header">
         <span class="section-title">All Paths</span>
         ${admin ? `<button class="btn btn-primary btn-sm" onclick="newPath()">+ New Path</button>` : ''}
@@ -351,10 +365,21 @@ function deletePath(id) {
 // ---------------------------------------------------------------- PATH TRACKER
 async function openPath(id) {
   state.pathId = id;
-  state.tab = 'me';
+  state.viewingMember = null;
   await loadPath();
+  state.tab = isEnrolled() ? 'me' : 'leaderboard'; // mentors aren't enrolled -> oversight
   state.view = 'path';
   render();
+  if (state.tab !== 'me') {
+    try { await loadMembersIfNeeded(state.tab); renderTab(); } catch (e) { toast(e.message, true); }
+  }
+}
+async function loadMembersIfNeeded(tab) {
+  if (tab === 'leaderboard' || tab === 'team') {
+    const m = await api('GET', `/paths/${state.pathId}/members`);
+    state.members = m.members; state.totals = m.totals;
+    if (tab === 'team') { const a = await api('GET', `/paths/${state.pathId}/activity`); state.activity = a.activity; }
+  }
 }
 async function loadPath() {
   const data = await api('GET', `/paths/${state.pathId}`);
@@ -381,13 +406,16 @@ function combinedPct() {
 
 function renderPath(app) {
   const p = state.path.path;
+  if (state.viewingMember) return renderMemberView(app);
+  const enrolled = isEnrolled();
+  const tabs = [];
+  if (enrolled) tabs.push(`<button class="tab ${state.tab === 'me' ? 'active' : ''}" onclick="switchTab('me')">My Progress</button>`);
+  tabs.push(`<button class="tab ${state.tab === 'leaderboard' ? 'active' : ''}" onclick="switchTab('leaderboard')">Leaderboard</button>`);
+  tabs.push(`<button class="tab ${state.tab === 'team' ? 'active' : ''}" onclick="switchTab('team')">Team Activity</button>`);
   app.innerHTML = `
     <div class="view">
-      <div class="tabs">
-        <button class="tab ${state.tab === 'me' ? 'active' : ''}" onclick="switchTab('me')">My Progress</button>
-        <button class="tab ${state.tab === 'leaderboard' ? 'active' : ''}" onclick="switchTab('leaderboard')">Leaderboard</button>
-        <button class="tab ${state.tab === 'team' ? 'active' : ''}" onclick="switchTab('team')">Team Activity</button>
-      </div>
+      ${isStaff() && !enrolled ? `<div class="admin-bar" style="background:var(--blue-dim);border-color:var(--blue-border);color:var(--blue-light)">👁 Oversight view — read-only. Click a member to see their detailed progress.</div>` : ''}
+      <div class="tabs">${tabs.join('')}</div>
       <div id="tabBody"></div>
     </div>`;
   document.title = `${p.name} · AcademyTrack`;
@@ -396,15 +424,9 @@ function renderPath(app) {
 
 async function switchTab(tab) {
   state.tab = tab;
+  state.viewingMember = null;
   render();
-  if (tab === 'leaderboard' || tab === 'team') {
-    try {
-      const m = await api('GET', `/paths/${state.pathId}/members`);
-      state.members = m.members; state.totals = m.totals;
-      if (tab === 'team') { const a = await api('GET', `/paths/${state.pathId}/activity`); state.activity = a.activity; }
-      renderTab();
-    } catch (e) { toast(e.message, true); }
-  }
+  try { await loadMembersIfNeeded(tab); renderTab(); } catch (e) { toast(e.message, true); }
 }
 
 function renderTab() {
@@ -417,35 +439,43 @@ function renderTab() {
 
 // ---- My Progress (tracker) ----
 function renderTracker(body) {
+  renderTrackerFor(body, { avatar: state.user.avatar, name: state.user.name, done: state.done, readOnly: false });
+}
+
+// Renders the module/topic/task + deliverable tracker for a "subject" (the current user,
+// or — read-only — another member when staff drills in). readOnly hides the toggle handlers.
+function renderTrackerFor(body, subject) {
   const p = state.path.path;
+  const done = subject.done;
+  const ro = subject.readOnly;
   const tot = pathTotals();
-  const pct = combinedPct();
+  const topicsDone = done.topics.size, tasksDone = done.tasks.size, delivDone = done.deliverables.size;
+  const totalAll = tot.topics + tot.tasks + tot.deliverables;
+  const pct = totalAll ? Math.round(((topicsDone + tasksDone + delivDone) / totalAll) * 100) : 0;
   const lvl = getLevel(pct);
-  const topicsDone = state.done.topics.size;
-  const tasksDone = state.done.tasks.size;
-  const delivDone = state.done.deliverables.size;
+  const roStyle = ro ? ' style="cursor:default"' : '';
 
   const modulesHtml = state.path.modules.map((m, mi) => {
     const total = m.topics.length;
-    const done = m.topics.filter((t) => state.done.topics.has(t.id)).length;
-    const mpct = total ? Math.round((done / total) * 100) : 0;
+    const doneCount = m.topics.filter((t) => done.topics.has(t.id)).length;
+    const mpct = total ? Math.round((doneCount / total) * 100) : 0;
     const open = state.openModules.has(m.id);
     const color = m.color || 'var(--blue)';
     const topicsHtml = m.topics.map((t) => {
-      const tdone = state.done.topics.has(t.id);
+      const tdone = done.topics.has(t.id);
       const tasksHtml = t.tasks.length ? `
         <div class="exercise-toggle" onclick="toggleTasks(${t.id})">▸ ${t.tasks.length} task${t.tasks.length > 1 ? 's' : ''}</div>
         <div class="exercise-group" id="tasks_${t.id}" style="display:none">
           ${t.tasks.map((tk) => {
-            const kd = state.done.tasks.has(tk.id);
+            const kd = done.tasks.has(tk.id);
             return `<div class="exercise-row ${kd ? 'done' : ''}">
-              <div class="exercise-check ${kd ? 'done' : ''}" onclick="toggleTask(${tk.id})"></div>
+              <div class="exercise-check ${kd ? 'done' : ''}"${ro ? roStyle : ` onclick="toggleTask(${tk.id})"`}></div>
               <div class="exercise-text">${esc(tk.description)}</div></div>`;
           }).join('')}
         </div>` : '';
       return `
         <div class="topic-row ${tdone ? 'done' : ''}">
-          <div class="topic-check ${tdone ? 'done' : ''}" onclick="toggleTopic(${t.id})"></div>
+          <div class="topic-check ${tdone ? 'done' : ''}"${ro ? roStyle : ` onclick="toggleTopic(${t.id})"`}></div>
           <div class="topic-info">
             <div class="topic-name">${esc(t.name)}</div>
             ${tasksHtml}
@@ -459,7 +489,7 @@ function renderTracker(body) {
           <span class="module-chevron">▶</span>
           <span class="module-num">${twoDigit(mi)}</span>
           <span class="module-name">${esc(m.icon || '')} ${esc(m.name)}</span>
-          <span class="module-progress-text">${done}/${total}</span>
+          <span class="module-progress-text">${doneCount}/${total}</span>
           <div class="module-mini-bar"><div class="module-mini-fill" style="width:${mpct}%;background:${color}"></div></div>
         </div>
         <div class="module-body">
@@ -469,10 +499,10 @@ function renderTracker(body) {
   }).join('');
 
   const delivHtml = state.path.deliverables.map((d) => {
-    const dd = state.done.deliverables.has(d.id);
+    const dd = done.deliverables.has(d.id);
     return `
       <div class="topic-row ${dd ? 'done' : ''}">
-        <div class="topic-check ${dd ? 'done' : ''}" onclick="toggleDeliverable(${d.id})"></div>
+        <div class="topic-check ${dd ? 'done' : ''}"${ro ? roStyle : ` onclick="toggleDeliverable(${d.id})"`}></div>
         <div class="topic-info">
           <div class="topic-name">${esc(d.title)}</div>
           ${d.description ? `<div class="topic-module-tag">${esc(d.description)}</div>` : ''}
@@ -482,12 +512,12 @@ function renderTracker(body) {
 
   body.innerHTML = `
     <div class="profile-header">
-      <div class="profile-avatar" style="background:${lvl.color}22;color:${lvl.color}">${state.user.avatar || '🙂'}</div>
+      <div class="profile-avatar" style="background:${lvl.color}22;color:${lvl.color}">${subject.avatar || '🙂'}</div>
       <div style="flex:1;min-width:200px">
         <div class="profile-name">${esc(p.icon || '')} ${esc(p.name)}</div>
-        <div class="muted" style="font-size:13px;margin-top:2px">Level ${lvl.level} · ${lvl.name} · ${esc(state.user.name)}</div>
+        <div class="muted" style="font-size:13px;margin-top:2px">Level ${lvl.level} · ${lvl.name} · ${esc(subject.name)}</div>
         <div class="big-progress"><div class="big-progress-fill" style="width:${pct}%;background:${progressColor(pct)}"></div></div>
-        <div class="progress-label"><span>${pct}% complete</span><span>${topicsDone + tasksDone + delivDone} / ${tot.topics + tot.tasks + tot.deliverables} items</span></div>
+        <div class="progress-label"><span>${pct}% complete</span><span>${topicsDone + tasksDone + delivDone} / ${totalAll} items</span></div>
       </div>
     </div>
 
@@ -510,9 +540,38 @@ function renderTracker(body) {
     ${state.path.deliverables.length ? `
       <div class="section-header" style="margin-top:28px"><span class="section-title">Deliverables</span></div>
       <div class="module-section open"><div class="module-body" style="padding-top:12px">
-        <div class="dim" style="font-size:12px;margin-bottom:8px">Mark each deliverable as submitted once you finish and send it.</div>
+        ${ro ? '' : '<div class="dim" style="font-size:12px;margin-bottom:8px">Mark each deliverable as submitted once you finish and send it.</div>'}
         ${delivHtml}
       </div></div>` : ''}`;
+}
+
+// Staff drill-down: view a specific member's progress (read-only).
+async function viewMember(userId) {
+  try {
+    const d = await api('GET', `/paths/${state.pathId}/members/${userId}/progress`);
+    state.viewingMember = {
+      user: d.user,
+      done: {
+        topics: new Set(d.progress.topics),
+        tasks: new Set(d.progress.tasks),
+        deliverables: new Set(d.progress.deliverables),
+      },
+    };
+    state.openModules = new Set();
+    render();
+  } catch (e) { toast(e.message, true); }
+}
+function closeMember() { state.viewingMember = null; render(); }
+
+function renderMemberView(app) {
+  const vm = state.viewingMember;
+  app.innerHTML = `
+    <div class="view">
+      <button class="back-btn" onclick="closeMember()">← Back to ${esc(state.path.path.name)}</button>
+      <div class="admin-bar" style="background:var(--blue-dim);border-color:var(--blue-border);color:var(--blue-light)">👁 Read-only — ${esc(vm.user.name)}'s progress</div>
+      <div id="tabBody"></div>
+    </div>`;
+  renderTrackerFor(document.getElementById('tabBody'), { avatar: vm.user.avatar, name: vm.user.name, done: vm.done, readOnly: true });
 }
 
 function toggleModule(id) {
@@ -577,11 +636,12 @@ function renderLeaderboard(body) {
   const rows = ranked.map((m, i) => {
     const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i + 1}`;
     const topClass = i < 3 ? `top${i + 1}` : '';
+    const clickable = isStaff() ? ` onclick="viewMember(${m.id})" style="cursor:pointer"` : '';
     return `
-      <div class="lb-row ${topClass}">
+      <div class="lb-row ${topClass}"${clickable}>
         <div class="lb-rank">${medal}</div>
         <div class="lb-avatar" style="background:${progressColor(m.pct)}22">${m.avatar || '🙂'}</div>
-        <div class="lb-name">${esc(m.name)}${m.id === state.user.id ? ' <span class="dim">(you)</span>' : ''}</div>
+        <div class="lb-name">${esc(m.name)}${m.id === state.user.id ? ' <span class="dim">(you)</span>' : ''}${isStaff() ? ' <span class="dim">›</span>' : ''}</div>
         <div class="lb-bar-wrap"><div class="lb-bar"><div class="lb-fill" style="width:${m.pct}%;background:${progressColor(m.pct)}"></div></div></div>
         <div class="lb-pct">${m.pct}%</div>
       </div>`;
@@ -611,7 +671,8 @@ function renderTeam(body) {
     </div>`).join('');
   const members = state.members.map((m) => {
     const pct = memberPct(m);
-    return `<div class="qa-card" style="cursor:default">
+    const clickable = isStaff() ? ` onclick="viewMember(${m.id})"` : ' style="cursor:default"';
+    return `<div class="qa-card"${clickable}>
       <div class="qa-card-top">
         <div class="qa-avatar" style="background:${progressColor(pct)}22">${m.avatar || '🙂'}</div>
         <div class="qa-info"><div class="qa-name">${esc(m.name)}</div><div class="qa-role">${m.topics_done}/${state.totals.topics} topics</div></div>
@@ -773,12 +834,140 @@ function findModule(id) { return state.path.modules.find((m) => m.id === id); }
 function findTopic(id) { for (const m of state.path.modules) { const t = m.topics.find((x) => x.id === id); if (t) return t; } }
 function findTask(id) { for (const m of state.path.modules) for (const t of m.topics) { const tk = t.tasks.find((x) => x.id === id); if (tk) return tk; } }
 
+// ---------------------------------------------------------------- USERS (admin)
+async function goUsers() {
+  const { users } = await api('GET', '/users');
+  state.users = users;
+  state.view = 'users';
+  render();
+}
+
+function renderUsers(app) {
+  const rows = state.users.map((u) => `
+    <div class="edit-row">
+      <span class="qa-avatar" style="width:32px;height:32px;font-size:14px;background:var(--bg-elevated)">${u.avatar || '🙂'}</span>
+      <span class="label"><strong>${esc(u.name)}</strong> <span class="dim">${esc(u.email)}</span></span>
+      <span class="dim" style="font-size:12px">${u.path_count} path${u.path_count !== 1 ? 's' : ''}</span>
+      <select class="form-input" style="width:auto;padding:5px 8px" onchange="changeRole(${u.id}, this.value)">
+        ${['learner', 'mentor', 'admin'].map((r) => `<option value="${r}" ${u.role === r ? 'selected' : ''}>${r}</option>`).join('')}
+      </select>
+    </div>`).join('');
+  app.innerHTML = `
+    <div class="view">
+      <div class="hero" style="padding:20px 0 24px"><h1>Users</h1><p>Manage learners, mentors and admins.</p></div>
+      <div class="section-header">
+        <span class="section-title">People (${state.users.length})</span>
+        <button class="btn btn-primary btn-sm" onclick="addMentor()">+ Add mentor</button>
+      </div>
+      <div class="admin-module">${rows || '<div class="dim">No users yet.</div>'}</div>
+      <p class="dim" style="font-size:12px;margin-top:12px">Mentors can view everyone's progress, leaderboard and activity across all paths, and generate reports — but can't edit content or change anyone's progress.</p>
+    </div>`;
+}
+
+function addMentor() {
+  formModal({
+    title: 'Add a mentor',
+    fields: [
+      { name: 'name', label: 'Full name', required: true, placeholder: 'e.g. Sam Rivera' },
+      { name: 'email', label: 'Email', type: 'email', required: true, placeholder: 'sam@company.com' },
+      { name: 'password', label: 'Temporary password', required: true, placeholder: 'they log in with this (min 6 chars)' },
+    ],
+    submitLabel: 'Create mentor',
+    onSubmit: async (v) => { await api('POST', '/users', { ...v, role: 'mentor' }); toast('Mentor added.'); await goUsers(); },
+  });
+}
+
+async function changeRole(id, role) {
+  try { await api('PUT', `/users/${id}/role`, { role }); toast('Role updated.'); }
+  catch (e) { toast(e.message, true); }
+  await goUsers(); // refresh (also resets the dropdown if the change was rejected)
+}
+
+// ---------------------------------------------------------------- WEEKLY REPORT (admin + mentor)
+async function openReport(pathId) {
+  openModal('<div class="spinner">Building report…</div>');
+  try {
+    const data = await api('GET', `/paths/${pathId}/report`);
+    const html = buildReportHtml(data);
+    state._reportHtml = html;
+    openModal(`
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <h2 style="margin:0">Weekly report</h2>
+        <button class="btn btn-outline btn-sm" onclick="closeModal()">Close</button>
+      </div>
+      <p class="dim" style="font-size:13px;margin-bottom:12px">${esc(data.path.name)} · last 7 days. Open in a new tab to print or paste into an email, or copy the HTML.</p>
+      <div style="display:flex;gap:8px;margin-bottom:12px">
+        <button class="btn btn-primary btn-sm" onclick="openReportTab()">Open in new tab</button>
+        <button class="btn btn-outline btn-sm" onclick="copyReport()">Copy HTML</button>
+      </div>
+      <textarea class="form-input" style="height:280px;font-family:monospace;font-size:11px" readonly>${esc(html)}</textarea>`);
+  } catch (e) { closeModal(); toast(e.message, true); }
+}
+function openReportTab() {
+  const blob = new Blob([state._reportHtml || ''], { type: 'text/html' });
+  window.open(URL.createObjectURL(blob), '_blank');
+}
+function copyReport() {
+  navigator.clipboard.writeText(state._reportHtml || '')
+    .then(() => toast('Report HTML copied!'))
+    .catch(() => toast('Copy failed', true));
+}
+
+function buildReportHtml(data) {
+  const { path, totals, members, weekActivity } = data;
+  const totalItems = totals.topics + totals.tasks + totals.deliverables;
+  const pctOf = (m) => (totalItems ? Math.round(((m.topics_done + m.tasks_done + m.deliverables_done) / totalItems) * 100) : 0);
+  const ranked = [...members].sort((a, b) => pctOf(b) - pctOf(a));
+  const byUser = {};
+  for (const a of weekActivity) (byUser[a.user_id] ||= []).push(a);
+
+  const rows = ranked.map((m) => `
+    <tr>
+      <td>${esc(m.name)}</td>
+      <td style="text-align:center"><strong>${pctOf(m)}%</strong></td>
+      <td style="text-align:center">${m.topics_done}/${totals.topics}</td>
+      <td style="text-align:center">${m.tasks_done}/${totals.tasks}</td>
+      <td style="text-align:center">${m.deliverables_done}/${totals.deliverables}</td>
+      <td style="text-align:center">${m.week_count || 0}</td>
+    </tr>`).join('');
+
+  const weekList = ranked.map((m) => {
+    const items = byUser[m.id] || [];
+    if (!items.length) return '';
+    return `<h3>${esc(m.name)} <span style="font-weight:400;color:#888">— ${items.length} completed this week</span></h3>
+      <ul>${items.map((a) => `<li>${esc(a.detail || a.type)} <span style="color:#999">(${esc(a.type)})</span></li>`).join('')}</ul>`;
+  }).filter(Boolean).join('') || '<p style="color:#888">No activity in the last 7 days.</p>';
+
+  const generated = new Date().toLocaleString();
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8">
+<title>Weekly Report — ${esc(path.name)}</title>
+<style>
+  body{font-family:Arial,Helvetica,sans-serif;color:#1a1a1a;max-width:820px;margin:24px auto;padding:0 16px;line-height:1.5}
+  h1{font-size:22px;margin-bottom:4px} h2{font-size:16px;border-bottom:2px solid #eee;padding-bottom:6px;margin-top:28px}
+  h3{font-size:14px;margin:16px 0 4px} .muted{color:#777;font-size:13px}
+  table{width:100%;border-collapse:collapse;font-size:13px;margin-top:8px}
+  th,td{border:1px solid #e5e5e5;padding:8px} th{background:#f7f7f7;text-align:left}
+  ul{font-size:13px;margin:4px 0 0 18px}
+</style></head><body>
+  <h1>${esc(path.icon || '')} ${esc(path.name)} — Weekly Progress Report</h1>
+  <p class="muted">Generated ${esc(generated)} · ${members.length} member(s) · curriculum: ${totals.topics} topics, ${totals.tasks} tasks, ${totals.deliverables} deliverables</p>
+  <h2>Progress overview</h2>
+  <table>
+    <thead><tr><th>Member</th><th>Overall</th><th>Topics</th><th>Tasks</th><th>Deliverables</th><th>This week</th></tr></thead>
+    <tbody>${rows || '<tr><td colspan="6">No members enrolled.</td></tr>'}</tbody>
+  </table>
+  <h2>Completed in the last 7 days</h2>
+  ${weekList}
+</body></html>`;
+}
+
 // expose handlers used via inline onclick
 Object.assign(window, {
   toggleAuthMode, logout, goPaths, openPath, enroll, unenroll, newPath, editPath, deletePath,
   switchTab, toggleModule, expandAll, toggleTasks, toggleTopic, toggleTask, toggleDeliverable,
   goAdmin, addModule, editModule, delModule, addTopic, editTopic, delTopic,
   addTask, editTask, delTask, addDeliv, editDeliv, delDeliv, closeModal, closeCongrats,
+  goUsers, addMentor, changeRole, viewMember, closeMember, openReport, openReportTab, copyReport,
 });
 
 boot();

@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@neondatabase/serverless": "^0.10.4",
+    "@netlify/database": "^1.1.0",
     "@netlify/neon": "^0.1.0",
     "bcryptjs": "^2.4.3",
     "hono": "^4.6.14",
@@ -20,6 +21,6 @@
   },
   "devDependencies": {
     "@netlify/functions": "^2.8.2",
-    "netlify-cli": "^17.38.0"
+    "netlify-cli": "^26.2.0"
   }
 }
