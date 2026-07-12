@@ -914,51 +914,135 @@ function copyReport() {
 }
 
 function buildReportHtml(data) {
-  const { path, totals, members, weekActivity } = data;
+  const { path, totals, modules, members } = data;
   const totalItems = totals.topics + totals.tasks + totals.deliverables;
   const pctOf = (m) => (totalItems ? Math.round(((m.topics_done + m.tasks_done + m.deliverables_done) / totalItems) * 100) : 0);
-  const ranked = [...members].sort((a, b) => pctOf(b) - pctOf(a));
-  const byUser = {};
-  for (const a of weekActivity) (byUser[a.user_id] ||= []).push(a);
+  const moduleById = {}; modules.forEach((m) => (moduleById[m.id] = m));
+  const completedModules = (m) => m.perModule.filter((pm) => {
+    const mod = moduleById[pm.module_id];
+    return mod && mod.topic_total > 0 && pm.topics_done >= mod.topic_total && pm.tasks_done >= mod.task_total;
+  }).map((pm) => moduleById[pm.module_id]);
 
-  const rows = ranked.map((m) => `
-    <tr>
-      <td>${esc(m.name)}</td>
-      <td style="text-align:center"><strong>${pctOf(m)}%</strong></td>
-      <td style="text-align:center">${m.topics_done}/${totals.topics}</td>
-      <td style="text-align:center">${m.tasks_done}/${totals.tasks}</td>
-      <td style="text-align:center">${m.deliverables_done}/${totals.deliverables}</td>
-      <td style="text-align:center">${m.week_count || 0}</td>
-    </tr>`).join('');
+  const sorted = [...members].sort((a, b) => pctOf(b) - pctOf(a));
+  const rn = sorted.length;
+  const avg1 = (fn) => (rn ? Math.round((sorted.reduce((s, m) => s + fn(m), 0) / rn) * 10) / 10 : 0);
+  const avgPct = rn ? Math.round(sorted.reduce((s, m) => s + pctOf(m), 0) / rn) : 0;
+  const avgTopics = avg1((m) => m.topics_done);
+  const avgTasks = avg1((m) => m.tasks_done);
+  const avgDel = avg1((m) => m.deliverables_done);
+  const avgMods = avg1((m) => completedModules(m).length);
+  const dateStr = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  const medals = ['🥇', '🥈', '🥉'];
+  const barColor = (pct) => (pct >= 75 ? '#22c55e' : pct >= 40 ? '#0891b2' : pct >= 20 ? '#7c3aed' : '#2563eb');
+  const emailBar = (pct, color, w) => `<table cellpadding="0" cellspacing="0" width="${w || 120}" style="display:inline-table;vertical-align:middle"><tr><td style="background:#e5e7eb;border-radius:4px;height:8px;padding:0"><div style="width:${pct}%;height:8px;background:${color};border-radius:4px"></div></td></tr></table>`;
+  const stat = (val, sub, color, denom) => `
+    <td width="16.6%" style="padding:20px 8px;text-align:center;border-right:1px solid #e5e7eb">
+      <div style="font-size:28px;font-weight:800;color:${color}">${val}${denom ? `<span style="font-size:14px;color:#9ca3af">/${denom}</span>` : ''}</div>
+      <div style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:#6b7280;margin-top:2px">${sub}</div>
+    </td>`;
 
-  const weekList = ranked.map((m) => {
-    const items = byUser[m.id] || [];
-    if (!items.length) return '';
-    return `<h3>${esc(m.name)} <span style="font-weight:400;color:#888">— ${items.length} completed this week</span></h3>
-      <ul>${items.map((a) => `<li>${esc(a.detail || a.type)} <span style="color:#999">(${esc(a.type)})</span></li>`).join('')}</ul>`;
-  }).filter(Boolean).join('') || '<p style="color:#888">No activity in the last 7 days.</p>';
+  const lbRows = sorted.slice(0, 10).map((m, rank) => {
+    const pct = pctOf(m), bc = barColor(pct), lv = getLevel(pct);
+    const badges = completedModules(m).map((mod) => mod.icon || '🏅').join(' ');
+    return `<tr style="border-bottom:1px solid #e5e7eb;${rank < 3 ? 'background:#fefce8' : ''}">
+      <td style="padding:14px 16px;font-size:18px;text-align:center;width:50px">${medals[rank] || rank + 1}</td>
+      <td style="padding:14px 16px">
+        <div style="font-weight:700;color:#111827;font-size:14px">${esc(m.name)}</div>
+        <div style="font-size:11px;color:${lv.color};font-weight:600">Lv.${lv.level} ${lv.name}</div>
+      </td>
+      <td style="padding:14px 16px">
+        ${emailBar(pct, bc, 120)} <span style="font-weight:800;color:${bc};font-size:16px">${pct}%</span>
+        <div style="font-size:11px;color:#9ca3af;margin-top:2px">${m.topics_done} topics &middot; ${m.tasks_done} tasks &middot; ${m.deliverables_done}/${totals.deliverables} 📦</div>
+      </td>
+      <td style="padding:14px 16px;font-size:14px">${badges || '—'}</td>
+    </tr>`;
+  }).join('');
 
-  const generated = new Date().toLocaleString();
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8">
-<title>Weekly Report — ${esc(path.name)}</title>
-<style>
-  body{font-family:Arial,Helvetica,sans-serif;color:#1a1a1a;max-width:820px;margin:24px auto;padding:0 16px;line-height:1.5}
-  h1{font-size:22px;margin-bottom:4px} h2{font-size:16px;border-bottom:2px solid #eee;padding-bottom:6px;margin-top:28px}
-  h3{font-size:14px;margin:16px 0 4px} .muted{color:#777;font-size:13px}
-  table{width:100%;border-collapse:collapse;font-size:13px;margin-top:8px}
-  th,td{border:1px solid #e5e5e5;padding:8px} th{background:#f7f7f7;text-align:left}
-  ul{font-size:13px;margin:4px 0 0 18px}
-</style></head><body>
-  <h1>${esc(path.icon || '')} ${esc(path.name)} — Weekly Progress Report</h1>
-  <p class="muted">Generated ${esc(generated)} · ${members.length} member(s) · curriculum: ${totals.topics} topics, ${totals.tasks} tasks, ${totals.deliverables} deliverables</p>
-  <h2>Progress overview</h2>
-  <table>
-    <thead><tr><th>Member</th><th>Overall</th><th>Topics</th><th>Tasks</th><th>Deliverables</th><th>This week</th></tr></thead>
-    <tbody>${rows || '<tr><td colspan="6">No members enrolled.</td></tr>'}</tbody>
+  const rows = sorted.map((m, rank) => {
+    const pct = pctOf(m), bc = barColor(pct), lv = getLevel(pct);
+    return `<tr style="border-bottom:1px solid #e5e7eb">
+      <td style="padding:12px 16px;font-weight:700;color:#374151">${rank + 1}</td>
+      <td style="padding:12px 16px;font-weight:600;color:#111827">${esc(m.name)}</td>
+      <td style="padding:12px 16px;color:#6b7280">${esc(m.email || '')}</td>
+      <td style="padding:12px 16px">${emailBar(pct, bc, 80)} <span style="font-weight:700;color:${bc}">${pct}%</span></td>
+      <td style="padding:12px 16px;color:#374151">${m.topics_done}/${totals.topics}</td>
+      <td style="padding:12px 16px;color:#374151">${m.tasks_done}/${totals.tasks}</td>
+      <td style="padding:12px 16px;color:#374151">${m.deliverables_done}/${totals.deliverables}</td>
+      <td style="padding:12px 16px;color:#374151">${completedModules(m).length}/${totals.modules}</td>
+      <td style="padding:12px 16px"><span style="color:${lv.color};font-size:11px;font-weight:700">${lv.name}</span></td>
+    </tr>`;
+  }).join('');
+
+  const moduleProgress = modules.map((mod) => {
+    const denom = rn * mod.topic_total, taskDenom = rn * mod.task_total;
+    const topicDone = sorted.reduce((s, m) => s + (m.perModule.find((x) => x.module_id === mod.id)?.topics_done || 0), 0);
+    const taskDone = sorted.reduce((s, m) => s + (m.perModule.find((x) => x.module_id === mod.id)?.tasks_done || 0), 0);
+    const topicPct = denom ? Math.round((topicDone / denom) * 100) : 0;
+    const taskPct = taskDenom ? Math.round((taskDone / taskDenom) * 100) : 0;
+    return `<tr style="border-bottom:1px solid #f3f4f6">
+      <td style="padding:8px 16px;font-size:14px">${esc(mod.icon || '📦')}</td>
+      <td style="padding:8px 16px;font-weight:700;color:#6b7280;font-family:monospace;font-size:12px">${String(mod.position).padStart(2, '0')}</td>
+      <td style="padding:8px 16px;color:#374151;font-size:13px">${esc(mod.name)}</td>
+      <td style="padding:8px 16px">${emailBar(topicPct, '#2563eb', 60)} <span style="font-size:12px;font-weight:600;color:#2563eb">${topicPct}%</span></td>
+      <td style="padding:8px 16px">${emailBar(taskPct, '#eab308', 60)} <span style="font-size:12px;font-weight:600;color:#b45309">${taskPct}%</span></td>
+    </tr>`;
+  }).join('');
+
+  const th = (t, align) => `<th style="padding:10px 16px;text-align:${align || 'left'};font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#6b7280">${t}</th>`;
+
+  return `<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"><title>${esc(path.name)} — Weekly Report</title></head>
+<body style="font-family:Arial,Helvetica,sans-serif;background:#f9fafb;margin:0;padding:32px">
+  <table width="850" cellpadding="0" cellspacing="0" align="center" style="background:#fff;border-radius:12px;overflow:hidden;border:1px solid #e5e7eb">
+    <tr><td style="background:linear-gradient(135deg,#1e3a8a,#2563eb);background-color:#1e3a8a;padding:32px;color:#fff">
+      <div style="font-size:12px;font-weight:600;letter-spacing:1px;text-transform:uppercase;opacity:.7;margin-bottom:6px">Weekly Progress Report</div>
+      <div style="font-size:28px;font-weight:800;margin-bottom:4px">${esc(path.icon || '')} ${esc(path.name)}</div>
+      <div style="opacity:.8;font-size:14px">${dateStr}</div>
+    </td></tr>
+    <tr><td style="padding:0;background:#f8fafc;border-bottom:1px solid #e5e7eb">
+      <table width="100%" cellpadding="0" cellspacing="0"><tr>
+        ${stat(sorted.length, 'Members', '#2563eb')}
+        ${stat(avgPct + '%', 'Avg Progress', '#22c55e')}
+        ${stat(avgTopics, 'Avg Topics', '#f59e0b', totals.topics)}
+        ${stat(avgTasks, 'Avg Tasks', '#8b5cf6', totals.tasks)}
+        ${stat(avgDel, 'Avg Deliverables', '#f97316', totals.deliverables)}
+        <td width="16.6%" style="padding:20px 8px;text-align:center">
+          <div style="font-size:28px;font-weight:800;color:#374151">${avgMods}<span style="font-size:14px;color:#9ca3af">/${totals.modules}</span></div>
+          <div style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:#6b7280;margin-top:2px">Avg Modules</div>
+        </td>
+      </tr></table>
+    </td></tr>
+    <tr><td style="padding:24px">
+      <div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#6b7280;margin-bottom:14px">Leaderboard</div>
+      <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse">
+        <thead><tr style="background:#f8fafc;border-bottom:2px solid #e5e7eb">${th('Rank', 'center')}${th('Name')}${th('Progress')}${th('Badges')}</tr></thead>
+        <tbody>${lbRows || '<tr><td colspan="4" style="padding:16px;color:#9ca3af">No members enrolled.</td></tr>'}</tbody>
+      </table>
+    </td></tr>
+    <tr><td style="padding:0 24px 24px">
+      <div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#6b7280;margin-bottom:14px">Individual Progress</div>
+      <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse">
+        <thead><tr style="background:#f8fafc;border-bottom:2px solid #e5e7eb">${th('#')}${th('Name')}${th('Email')}${th('Overall')}${th('Topics')}${th('Tasks')}${th('Deliverables')}${th('Modules')}${th('Level')}</tr></thead>
+        <tbody>${rows || '<tr><td colspan="9" style="padding:16px;color:#9ca3af">No members enrolled.</td></tr>'}</tbody>
+      </table>
+    </td></tr>
+    <tr><td style="padding:0 24px 24px">
+      <div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#6b7280;margin-bottom:14px">Module Coverage (Team Average)</div>
+      <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse">
+        <thead><tr style="border-bottom:1px solid #e5e7eb">${th('')}${th('#')}${th('Module')}${th('Topics')}${th('Tasks')}</tr></thead>
+        <tbody>${moduleProgress}</tbody>
+      </table>
+    </td></tr>
+    <tr><td style="background:#f8fafc;border-top:1px solid #e5e7eb;padding:16px 24px;font-size:12px;color:#9ca3af">
+      <table width="100%" cellpadding="0" cellspacing="0"><tr>
+        <td style="font-size:12px;color:#9ca3af">${esc(path.name)} — Unosquare</td>
+        <td style="font-size:12px;color:#9ca3af;text-align:right">Generated ${dateStr}</td>
+      </tr></table>
+    </td></tr>
   </table>
-  <h2>Completed in the last 7 days</h2>
-  ${weekList}
-</body></html>`;
+</body>
+</html>`;
 }
 
 // expose handlers used via inline onclick
