@@ -211,10 +211,27 @@ textarea.form-input{resize:vertical;min-height:70px}
 .dim{color:var(--text-dim)}
 .spinner{text-align:center;padding:60px;color:var(--text-muted)}
 
+/* Team dashboard: podium, cards, activity */
+.podium{display:flex;align-items:flex-end;justify-content:center;gap:12px;padding:20px 0 0;margin-bottom:8px}
+.podium-step{text-align:center;border-radius:var(--radius) var(--radius) 0 0;padding:20px 16px 16px;position:relative}
+.podium-step.gold{background:rgba(234,179,8,.08);border:1px solid rgba(234,179,8,.25);border-bottom:4px solid var(--yellow);min-height:180px;flex:0 0 160px}
+.podium-step.silver{background:rgba(156,163,175,.06);border:1px solid rgba(156,163,175,.18);border-bottom:4px solid #9ca3af;min-height:140px;flex:0 0 140px}
+.podium-step.bronze{background:rgba(180,83,9,.06);border:1px solid rgba(180,83,9,.18);border-bottom:4px solid #b45309;min-height:120px;flex:0 0 140px}
+.podium-avatar{width:48px;height:48px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:22px;margin:0 auto 8px}
+.podium-name{font-size:14px;font-weight:700;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.podium-pct{font-size:22px;font-weight:800}
+.podium-medal{font-size:28px;margin-bottom:8px}
+.team-card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin-bottom:8px}
+.same-mod-avatars{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.same-mod-avatar{display:flex;align-items:center;gap:6px;padding:4px 10px;border-radius:6px;background:var(--bg-elevated);font-size:12px;font-weight:600}
+.duo-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:28px}
+
 @media(max-width:640px){
   .qa-grid,.path-grid{grid-template-columns:1fr}
   .stats-row{grid-template-columns:repeat(2,1fr)}
   .lb-bar-wrap{flex:0 0 100px}
   .nav-logo .subtitle{display:none}
   .nav-actions{gap:4px}
+  .duo-grid{grid-template-columns:1fr}
+  .podium-step{flex:0 0 100px!important;min-height:auto!important;padding:12px 8px}
 }

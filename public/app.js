@@ -163,6 +163,7 @@ const state = {
   members: null,
   totals: null,
   activity: null,
+  team: null,           // rich team dashboard payload
   openModules: new Set(),
   users: [],            // admin Users screen
   viewingMember: null,  // { user, done:{topics,tasks,deliverables} } read-only drill-down
@@ -375,10 +376,11 @@ async function openPath(id) {
   }
 }
 async function loadMembersIfNeeded(tab) {
-  if (tab === 'leaderboard' || tab === 'team') {
+  if (tab === 'leaderboard') {
     const m = await api('GET', `/paths/${state.pathId}/members`);
     state.members = m.members; state.totals = m.totals;
-    if (tab === 'team') { const a = await api('GET', `/paths/${state.pathId}/activity`); state.activity = a.activity; }
+  } else if (tab === 'team') {
+    state.team = await api('GET', `/paths/${state.pathId}/team`);
   }
 }
 async function loadPath() {
@@ -660,35 +662,123 @@ function timeAgo(ts) {
   return Math.floor(diff / 86400) + 'd ago';
 }
 function renderTeam(body) {
-  if (!state.members) { body.innerHTML = '<div class="spinner">Loading…</div>'; return; }
-  const icons = { topic: '📘', task: '🔬', deliverable: '🎯', module: '🏅' };
-  const colors = { topic: 'var(--blue-dim)', task: 'var(--yellow-dim)', deliverable: 'rgba(249,115,22,.12)', module: 'rgba(234,179,8,.2)' };
-  const acts = (state.activity || []).map((a) => `
+  const T = state.team;
+  if (!T) { body.innerHTML = '<div class="spinner">Loading…</div>'; return; }
+  const { totals, modules, members, activity, path: p } = T;
+  const totalItems = totals.topics + totals.tasks + totals.deliverables;
+  const pctOf = (m) => (totalItems ? Math.round(((m.topics_done + m.tasks_done + m.deliverables_done) / totalItems) * 100) : 0);
+  const moduleById = {}; modules.forEach((m) => (moduleById[m.id] = m));
+  const pmOf = (m, modId) => m.perModule.find((x) => x.module_id === modId) || { topics_done: 0, tasks_done: 0 };
+  const fullyDone = (m, mod) => pmOf(m, mod.id).topics_done >= mod.topic_total && pmOf(m, mod.id).tasks_done >= mod.task_total;
+  const completedModules = (m) => modules.filter((mod) => mod.topic_total > 0 && fullyDone(m, mod));
+  const currentModule = (m) => modules.find((mod) => !fullyDone(m, mod)) || null; // modules come ordered by position
+  const meId = state.user.id;
+  const rn = members.length;
+  const avg1 = (fn) => (rn ? Math.round((members.reduce((s, m) => s + fn(m), 0) / rn) * 10) / 10 : 0);
+  const avgTopics = avg1((m) => m.topics_done), avgTasks = avg1((m) => m.tasks_done),
+        avgDel = avg1((m) => m.deliverables_done), avgMods = avg1((m) => completedModules(m).length);
+
+  const sorted = [...members].sort((a, b) => pctOf(b) - pctOf(a));
+  const top3 = sorted.slice(0, 3);
+  const medals = ['🥇', '🥈', '🥉'];
+  const buildStep = (m, rank, cls) => {
+    const pct = pctOf(m), color = progressColor(pct), lv = getLevel(pct);
+    return `<div class="podium-step ${cls}">
+      <div class="podium-medal">${medals[rank]}</div>
+      <div class="podium-avatar" style="background:${color}22;color:${color}">${m.avatar || '🙂'}</div>
+      <div class="podium-name">${esc(m.name)}${m.id === meId ? ' <span style="font-size:10px;color:var(--blue-light)">(you)</span>' : ''}</div>
+      <div class="podium-pct" style="color:${color}">${pct}%</div>
+      <div style="font-size:11px;color:var(--text-dim);margin-top:2px">${lv.name}</div>
+    </div>`;
+  };
+  let podiumHtml = '';
+  if (top3.length === 1) podiumHtml = buildStep(top3[0], 0, 'gold');
+  else if (top3.length === 2) podiumHtml = buildStep(top3[1], 1, 'silver') + buildStep(top3[0], 0, 'gold');
+  else if (top3.length >= 3) podiumHtml = buildStep(top3[1], 1, 'silver') + buildStep(top3[0], 0, 'gold') + buildStep(top3[2], 2, 'bronze');
+
+  const modCounts = {};
+  members.forEach((m) => { const cm = currentModule(m); if (cm) modCounts[cm.id] = (modCounts[cm.id] || 0) + 1; });
+  let mostActiveMod = null, mac = 0;
+  Object.entries(modCounts).forEach(([mid, cnt]) => { if (cnt > mac) { mac = cnt; mostActiveMod = moduleById[mid]; } });
+  let mostImproved = null, mic = 0;
+  members.forEach((m) => { if ((m.week_count || 0) > mic) { mic = m.week_count; mostImproved = m; } });
+
+  const meMember = members.find((m) => m.id === meId);
+  const myMod = meMember ? currentModule(meMember) : null;
+  const sameMod = myMod ? members.filter((m) => m.id !== meId && currentModule(m) && currentModule(m).id === myMod.id) : [];
+
+  const actIcons = { topic: '📘', task: '🔬', deliverable: '📦', module: '🏅' };
+  const actColors = { topic: 'var(--blue-dim)', task: 'var(--yellow-dim)', deliverable: 'rgba(249,115,22,.12)', module: 'rgba(234,179,8,.2)' };
+  const acts = (activity || []).slice(0, 15).map((a) => `
     <div class="activity-item">
-      <div class="activity-icon" style="background:${colors[a.type] || 'var(--bg-elevated)'}">${icons[a.type] || '•'}</div>
-      <div class="activity-text"><strong>${esc(a.user_name)}</strong> completed <span class="muted">${esc(a.detail || a.type)}</span></div>
+      <div class="activity-icon" style="background:${actColors[a.type] || 'var(--bg-elevated)'}">${actIcons[a.type] || '📌'}</div>
+      <div class="activity-text"><strong>${esc(a.user_name)}${a.user_id === meId ? ' (you)' : ''}</strong> finished <span style="color:var(--text)">${esc(a.detail || a.type)}</span></div>
       <div class="activity-time">${timeAgo(a.created_at)}</div>
     </div>`).join('');
-  const members = state.members.map((m) => {
-    const pct = memberPct(m);
-    const clickable = isStaff() ? ` onclick="viewMember(${m.id})"` : ' style="cursor:default"';
-    return `<div class="qa-card"${clickable}>
-      <div class="qa-card-top">
-        <div class="qa-avatar" style="background:${progressColor(pct)}22">${m.avatar || '🙂'}</div>
-        <div class="qa-info"><div class="qa-name">${esc(m.name)}</div><div class="qa-role">${m.topics_done}/${state.totals.topics} topics</div></div>
-        <div class="qa-pct">${pct}%</div>
+
+  const milestones = [];
+  sorted.forEach((m) => completedModules(m).forEach((mod) => milestones.push({ name: m.name, mod })));
+  const milestoneHtml = milestones.slice(0, 12).map((x) => `
+    <div class="activity-item">
+      <div class="activity-icon" style="background:rgba(234,179,8,.2)">${esc(x.mod.icon || '🏅')}</div>
+      <div class="activity-text"><strong>${esc(x.name)}</strong> completed <span style="color:var(--yellow);font-weight:600">${esc(x.mod.name)}</span></div>
+    </div>`).join('');
+
+  const moduleProgressHtml = modules.map((mod) => {
+    const here = members.filter((m) => { const cm = currentModule(m); return cm && cm.id === mod.id; }).length;
+    const completedCount = members.filter((m) => mod.topic_total > 0 && fullyDone(m, mod)).length;
+    const denom = mod.topic_total + mod.task_total;
+    const avgPct = (rn && denom) ? Math.round(members.reduce((s, m) => { const pm = pmOf(m, mod.id); return s + ((pm.topics_done + pm.tasks_done) / denom) * 100; }, 0) / rn) : 0;
+    const isMyMod = myMod && myMod.id === mod.id;
+    return `<div class="team-card" style="display:flex;align-items:center;gap:14px;padding:12px 16px;${isMyMod ? 'border-color:var(--blue-border);background:var(--blue-dim)' : ''}">
+      <span style="font-size:20px">${esc(mod.icon || '📦')}</span>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:600">${String(mod.position).padStart(2, '0')} — ${esc(mod.name)}${isMyMod ? ' <span style="font-size:10px;color:var(--blue-light)">(you are here)</span>' : ''}</div>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:4px">
+          <div class="module-mini-bar" style="width:120px"><div class="module-mini-fill" style="width:${avgPct}%;background:${progressColor(avgPct)}"></div></div>
+          <span style="font-size:11px;color:var(--text-muted)">${avgPct}% avg · ${completedCount} completed · ${here} here</span>
+        </div>
       </div>
-      <div class="progress-bar"><div class="progress-fill" style="width:${pct}%;background:${progressColor(pct)}"></div></div>
     </div>`;
   }).join('');
+
+  const staffMembers = isStaff() ? `
+    <div class="section-header" style="margin-top:28px"><span class="section-title">Members — click to view progress</span></div>
+    <div class="qa-grid">${sorted.map((m) => {
+      const pct = pctOf(m);
+      return `<div class="qa-card" onclick="viewMember(${m.id})">
+        <div class="qa-card-top">
+          <div class="qa-avatar" style="background:${progressColor(pct)}22">${m.avatar || '🙂'}</div>
+          <div class="qa-info"><div class="qa-name">${esc(m.name)}</div><div class="qa-role">${m.topics_done}/${totals.topics} topics</div></div>
+          <div class="qa-pct">${pct}%</div>
+        </div>
+        <div class="progress-bar"><div class="progress-fill" style="width:${pct}%;background:${progressColor(pct)}"></div></div>
+      </div>`;
+    }).join('')}</div>` : '';
+
   body.innerHTML = `
-    <div class="hero" style="padding:20px 0 24px"><h1>Team Activity</h1><p>${state.members.length} member${state.members.length !== 1 ? 's' : ''} on this path</p></div>
-    <div class="section-header"><span class="section-title">Recent Activity</span></div>
-    <div class="module-section open"><div class="module-body" style="padding:12px 20px">
-      ${acts ? `<div class="activity-list">${acts}</div>` : '<div class="dim" style="font-size:13px">No activity yet — complete something to get started!</div>'}
-    </div></div>
-    <div class="section-header" style="margin-top:28px"><span class="section-title">Members</span></div>
-    <div class="qa-grid">${members || '<div class="dim">No members yet.</div>'}</div>`;
+    <div class="hero" style="padding-top:20px;padding-bottom:16px">
+      <h1 style="font-size:1.6rem">${esc(p.icon || '')} ${esc(p.name)}</h1>
+      <p>${rn} member${rn !== 1 ? 's' : ''} on this path</p>
+    </div>
+    ${top3.length ? `<div style="margin-bottom:28px"><div class="section-header"><span class="section-title">Top Performers</span></div><div class="podium">${podiumHtml}</div></div>` : ''}
+    <div class="stats-row" style="margin-bottom:28px">
+      <div class="stat-card"><div class="stat-num" style="color:var(--blue-light)">${avgTopics}<span style="font-size:.6em;color:var(--text-dim)">/${totals.topics}</span></div><div class="stat-label">Avg Topics</div></div>
+      <div class="stat-card"><div class="stat-num" style="color:var(--yellow)">${avgTasks}<span style="font-size:.6em;color:var(--text-dim)">/${totals.tasks}</span></div><div class="stat-label">Avg Tasks</div></div>
+      <div class="stat-card"><div class="stat-num" style="color:#f97316">${avgDel}<span style="font-size:.6em;color:var(--text-dim)">/${totals.deliverables}</span></div><div class="stat-label">Avg Deliverables</div></div>
+      <div class="stat-card"><div class="stat-num" style="color:var(--green)">${avgMods}<span style="font-size:.6em;color:var(--text-dim)">/${totals.modules}</span></div><div class="stat-label">Avg Modules</div></div>
+    </div>
+    <div class="duo-grid">
+      ${mostActiveMod ? `<div class="team-card"><div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-dim);margin-bottom:10px">Most Active Module</div><div style="display:flex;align-items:center;gap:10px"><span style="font-size:24px">${esc(mostActiveMod.icon || '📦')}</span><div><div style="font-size:15px;font-weight:700">${esc(mostActiveMod.name)}</div><div style="font-size:12px;color:var(--text-muted)">${mac} member${mac !== 1 ? 's' : ''} currently here</div></div></div></div>` : '<div></div>'}
+      ${mostImproved && mic > 0 ? `<div class="team-card" style="border-color:rgba(239,68,68,.25)"><div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-dim);margin-bottom:10px">Most Improved This Week</div><div style="display:flex;align-items:center;gap:10px"><span style="font-size:24px">🔥</span><div><div style="font-size:15px;font-weight:700">${esc(mostImproved.name)}${mostImproved.id === meId ? ' <span style="font-size:10px;color:var(--blue-light)">(you!)</span>' : ''}</div><div style="font-size:12px;color:var(--text-muted)">${mic} item${mic !== 1 ? 's' : ''} completed this week</div></div></div></div>` : `<div class="team-card"><div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-dim);margin-bottom:10px">Most Improved This Week</div><div style="font-size:13px;color:var(--text-muted);padding:8px 0">No activity recorded this week yet.</div></div>`}
+    </div>
+    ${myMod ? `<div class="team-card" style="border-color:var(--blue-border);margin-bottom:28px"><div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-dim);margin-bottom:10px">You're Currently In</div><div style="display:flex;align-items:center;gap:10px;margin-bottom:${sameMod.length ? 8 : 0}px"><span style="font-size:24px">${esc(myMod.icon || '📦')}</span><div><div style="font-size:15px;font-weight:700">${esc(myMod.name)}</div>${sameMod.length ? `<div style="font-size:12px;color:var(--text-muted)">${sameMod.length} teammate${sameMod.length !== 1 ? 's' : ''} also here</div>` : `<div style="font-size:12px;color:var(--text-muted)">You're the pioneer here!</div>`}</div></div>${sameMod.length ? `<div class="same-mod-avatars">${sameMod.map((sm) => `<div class="same-mod-avatar"><span>${sm.avatar || '🙂'}</span> ${esc(sm.name)}</div>`).join('')}</div>` : ''}</div>` : ''}
+    <div class="duo-grid">
+      <div><div class="section-header"><span class="section-title">Recent Activity</span></div><div class="team-card" style="padding:12px 16px">${acts ? `<div class="activity-list">${acts}</div>` : '<div style="font-size:13px;color:var(--text-muted);padding:16px 0;text-align:center">No activity yet. Complete a topic to get started!</div>'}</div></div>
+      <div><div class="section-header"><span class="section-title">Milestone Wall</span></div><div class="team-card" style="padding:12px 16px">${milestoneHtml ? `<div class="activity-list">${milestoneHtml}</div>` : '<div style="font-size:13px;color:var(--text-muted);padding:16px 0;text-align:center">No modules completed yet.</div>'}</div></div>
+    </div>
+    <div style="margin-bottom:28px"><div class="section-header"><span class="section-title">Module Progress — Where is everyone?</span></div>${moduleProgressHtml || '<div class="dim">No modules yet.</div>'}</div>
+    ${staffMembers}`;
 }
 
 // ---------------------------------------------------------------- ADMIN CONTENT EDITOR
@@ -843,15 +933,27 @@ async function goUsers() {
 }
 
 function renderUsers(app) {
-  const rows = state.users.map((u) => `
-    <div class="edit-row">
-      <span class="qa-avatar" style="width:32px;height:32px;font-size:14px;background:var(--bg-elevated)">${u.avatar || '🙂'}</span>
-      <span class="label"><strong>${esc(u.name)}</strong> <span class="dim">${esc(u.email)}</span></span>
-      <span class="dim" style="font-size:12px">${u.path_count} path${u.path_count !== 1 ? 's' : ''}</span>
-      <select class="form-input" style="width:auto;padding:5px 8px" onchange="changeRole(${u.id}, this.value)">
-        ${['learner', 'mentor', 'admin'].map((r) => `<option value="${r}" ${u.role === r ? 'selected' : ''}>${r}</option>`).join('')}
-      </select>
-    </div>`).join('');
+  const rows = state.users.map((u) => {
+    const chips = (u.paths || []).map((p) =>
+      `<span class="same-mod-avatar">${esc(p.name)} <span onclick="removeFromPath(${u.id}, ${p.id})" title="Remove from ${esc(p.name)}" style="cursor:pointer;color:var(--red);font-weight:800;padding:0 2px">×</span></span>`).join('');
+    return `<div class="team-card">
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <span class="qa-avatar" style="width:36px;height:36px;font-size:16px;background:var(--bg-elevated)">${u.avatar || '🙂'}</span>
+        <div style="flex:1;min-width:160px">
+          <div style="font-weight:700">${esc(u.name)}</div>
+          <div class="dim" style="font-size:12px">${esc(u.email)}</div>
+        </div>
+        <select class="form-input" style="width:auto;padding:5px 8px" onchange="changeRole(${u.id}, this.value)">
+          ${['learner', 'mentor', 'admin'].map((r) => `<option value="${r}" ${u.role === r ? 'selected' : ''}>${r}</option>`).join('')}
+        </select>
+        <button class="icon-btn" onclick="resetPassword(${u.id})">🔑 Reset password</button>
+      </div>
+      <div style="margin-top:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <span class="dim" style="font-size:12px">Learning paths:</span>
+        ${chips || '<span class="dim" style="font-size:12px">not enrolled in any</span>'}
+      </div>
+    </div>`;
+  }).join('');
   app.innerHTML = `
     <div class="view">
       <div class="hero" style="padding:20px 0 24px"><h1>Users</h1><p>Manage learners, mentors and admins.</p></div>
@@ -859,9 +961,28 @@ function renderUsers(app) {
         <span class="section-title">People (${state.users.length})</span>
         <button class="btn btn-primary btn-sm" onclick="addMentor()">+ Add mentor</button>
       </div>
-      <div class="admin-module">${rows || '<div class="dim">No users yet.</div>'}</div>
-      <p class="dim" style="font-size:12px;margin-top:12px">Mentors can view everyone's progress, leaderboard and activity across all paths, and generate reports — but can't edit content or change anyone's progress.</p>
+      ${rows || '<div class="dim">No users yet.</div>'}
+      <p class="dim" style="font-size:12px;margin-top:12px">Change a role with the dropdown, reset a password, or click × on a path to unenroll someone (their progress is kept). Mentors get read-only oversight across all paths.</p>
     </div>`;
+}
+
+function resetPassword(id) {
+  const u = state.users.find((x) => x.id === id);
+  formModal({
+    title: `Reset password — ${u ? u.name : ''}`,
+    fields: [{ name: 'password', label: 'New password', type: 'password', required: true, placeholder: 'at least 6 characters' }],
+    submitLabel: 'Set password',
+    onSubmit: async (v) => { await api('PUT', `/users/${id}/password`, { password: v.password }); toast('Password reset.'); },
+  });
+}
+
+function removeFromPath(userId, pathId) {
+  const u = state.users.find((x) => x.id === userId);
+  const p = u && (u.paths || []).find((x) => x.id === pathId);
+  confirmModal('Remove from path',
+    `Remove ${u ? u.name : 'this user'} from "${p ? p.name : ''}"? Their progress is kept, but they'll no longer be enrolled.`,
+    'Remove',
+    async () => { await api('DELETE', `/users/${userId}/enrollments/${pathId}`); toast('Removed from path.'); await goUsers(); });
 }
 
 function addMentor() {
@@ -1052,6 +1173,7 @@ Object.assign(window, {
   goAdmin, addModule, editModule, delModule, addTopic, editTopic, delTopic,
   addTask, editTask, delTask, addDeliv, editDeliv, delDeliv, closeModal, closeCongrats,
   goUsers, addMentor, changeRole, viewMember, closeMember, openReport, openReportTab, copyReport,
+  resetPassword, removeFromPath,
 });
 
 boot();
