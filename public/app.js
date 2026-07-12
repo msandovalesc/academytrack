@@ -21,7 +21,7 @@ async function api(method, path, body) {
 }
 
 // ---------------------------------------------------------------- cosmetic helpers (client-only)
-const AVATARS = ['🦊','🐼','🦁','🐸','🦋','🐺','🦅','🐬','🦄','🐯','🦉','🐙','🐲','🦈'];
+const AVATARS = ['🦊','🐼','🦁','🐸','🦜','🐺','🦅','🐬','🦄','🐯','🦉','🐻','🐲','🦈','🐴','🦝'];
 const MOTIVATIONAL = [
   'Streak growing! Keep it up!','Topic unlocked! You\'re on a roll!','Great progress! The team is watching!',
   'One step closer!','Crushing it! Keep the momentum!','Knowledge +1! Nice work!','Another one down! You\'re unstoppable!'
