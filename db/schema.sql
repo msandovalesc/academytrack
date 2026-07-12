@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS users (
   password_hash TEXT NOT NULL,
   name          TEXT NOT NULL,
   avatar        TEXT,
-  role          TEXT NOT NULL DEFAULT 'learner' CHECK (role IN ('admin', 'learner')),
+  role          TEXT NOT NULL DEFAULT 'learner' CHECK (role IN ('admin', 'learner', 'mentor')),
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
