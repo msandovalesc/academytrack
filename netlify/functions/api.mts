@@ -495,35 +495,67 @@ app.get('/paths/:id/members/:userId/progress', requireStaff, async (c) => {
   });
 });
 
-// Weekly report data for a path (staff-only): totals, per-member progress, last-7-days activity.
+// Weekly report data for a path (staff-only): modules with totals, and per-member
+// per-module done counts + deliverables + last-7-days activity count. The client renders
+// the full email-styled report (leaderboard, individual table, module coverage).
 app.get('/paths/:id/report', requireStaff, async (c) => {
   const sql = c.get('sql');
   const id = Number(c.req.param('id'));
   const [path] = await sql`SELECT * FROM learning_paths WHERE id = ${id}`;
   if (!path) return c.json({ error: 'Path not found' }, 404);
-  const [totals] = await sql`
-    SELECT
-      (SELECT count(*)::int FROM topics t JOIN modules m ON m.id = t.module_id WHERE m.path_id = ${id}) AS topics,
-      (SELECT count(*)::int FROM tasks tk JOIN topics t ON t.id = tk.topic_id JOIN modules m ON m.id = t.module_id WHERE m.path_id = ${id}) AS tasks,
-      (SELECT count(*)::int FROM deliverables d WHERE d.path_id = ${id}) AS deliverables`;
-  const members = await sql`
-    SELECT u.id, u.name, u.email, u.avatar,
-      (SELECT count(*)::int FROM topic_progress tp JOIN topics t ON t.id = tp.topic_id JOIN modules m ON m.id = t.module_id
-        WHERE m.path_id = ${id} AND tp.user_id = u.id AND tp.done) AS topics_done,
-      (SELECT count(*)::int FROM task_progress tp JOIN tasks tk ON tk.id = tp.task_id JOIN topics t ON t.id = tk.topic_id JOIN modules m ON m.id = t.module_id
-        WHERE m.path_id = ${id} AND tp.user_id = u.id AND tp.done) AS tasks_done,
-      (SELECT count(*)::int FROM deliverable_progress dp JOIN deliverables d ON d.id = dp.deliverable_id
-        WHERE d.path_id = ${id} AND dp.user_id = u.id AND dp.done) AS deliverables_done,
-      (SELECT count(*)::int FROM activity a WHERE a.path_id = ${id} AND a.user_id = u.id AND a.created_at > now() - interval '7 days') AS week_count
-    FROM users u JOIN enrollments e ON e.user_id = u.id
-    WHERE e.path_id = ${id}
-    ORDER BY u.name`;
-  const weekActivity = await sql`
-    SELECT a.user_id, u.name AS user_name, a.type, a.detail, a.created_at
-    FROM activity a JOIN users u ON u.id = a.user_id
-    WHERE a.path_id = ${id} AND a.created_at > now() - interval '7 days'
-    ORDER BY a.created_at DESC LIMIT 1000`;
-  return c.json({ path, totals, members, weekActivity });
+
+  const modules = await sql`
+    SELECT m.id, m.name, m.icon, m.position,
+      (SELECT count(*)::int FROM topics t WHERE t.module_id = m.id) AS topic_total,
+      (SELECT count(*)::int FROM tasks tk JOIN topics t ON t.id = tk.topic_id WHERE t.module_id = m.id) AS task_total
+    FROM modules m WHERE m.path_id = ${id} ORDER BY m.position, m.id`;
+  const [{ deliverable_total }] = await sql`SELECT count(*)::int AS deliverable_total FROM deliverables WHERE path_id = ${id}`;
+  const memberRows = await sql`
+    SELECT u.id, u.name, u.email, u.avatar FROM users u JOIN enrollments e ON e.user_id = u.id
+    WHERE e.path_id = ${id} ORDER BY u.name`;
+  const topicByUserMod = await sql`
+    SELECT tp.user_id, t.module_id, count(*)::int AS c FROM topic_progress tp
+    JOIN topics t ON t.id = tp.topic_id JOIN modules m ON m.id = t.module_id
+    WHERE m.path_id = ${id} AND tp.done GROUP BY tp.user_id, t.module_id`;
+  const taskByUserMod = await sql`
+    SELECT tp.user_id, t.module_id, count(*)::int AS c FROM task_progress tp
+    JOIN tasks tk ON tk.id = tp.task_id JOIN topics t ON t.id = tk.topic_id JOIN modules m ON m.id = t.module_id
+    WHERE m.path_id = ${id} AND tp.done GROUP BY tp.user_id, t.module_id`;
+  const delivByUser = await sql`
+    SELECT dp.user_id, count(*)::int AS c FROM deliverable_progress dp
+    JOIN deliverables d ON d.id = dp.deliverable_id WHERE d.path_id = ${id} AND dp.done GROUP BY dp.user_id`;
+  const weekByUser = await sql`
+    SELECT user_id, count(*)::int AS c FROM activity
+    WHERE path_id = ${id} AND created_at > now() - interval '7 days' GROUP BY user_id`;
+
+  const tMap: any = {}, kMap: any = {}, dMap: any = {}, wMap: any = {};
+  for (const r of topicByUserMod) (tMap[r.user_id] ||= {})[r.module_id] = r.c;
+  for (const r of taskByUserMod) (kMap[r.user_id] ||= {})[r.module_id] = r.c;
+  for (const r of delivByUser) dMap[r.user_id] = r.c;
+  for (const r of weekByUser) wMap[r.user_id] = r.c;
+
+  const members = memberRows.map((u: any) => {
+    const perModule = modules.map((m: any) => ({
+      module_id: m.id,
+      topics_done: (tMap[u.id] && tMap[u.id][m.id]) || 0,
+      tasks_done: (kMap[u.id] && kMap[u.id][m.id]) || 0,
+    }));
+    return {
+      id: u.id, name: u.name, email: u.email, avatar: u.avatar,
+      topics_done: perModule.reduce((s: number, x: any) => s + x.topics_done, 0),
+      tasks_done: perModule.reduce((s: number, x: any) => s + x.tasks_done, 0),
+      deliverables_done: dMap[u.id] || 0,
+      week_count: wMap[u.id] || 0,
+      perModule,
+    };
+  });
+  const totals = {
+    modules: modules.length,
+    topics: modules.reduce((s: number, m: any) => s + m.topic_total, 0),
+    tasks: modules.reduce((s: number, m: any) => s + m.task_total, 0),
+    deliverables: deliverable_total,
+  };
+  return c.json({ path, totals, modules, members });
 });
 
 // =====================================================================
