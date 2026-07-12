@@ -103,7 +103,7 @@ app.post('/auth/register', async (c) => {
   const [{ count }] = await sql`SELECT count(*)::int AS count FROM users`;
   const role = count === 0 ? 'admin' : 'learner'; // first-ever user is the admin
   const avatars = ['🦊', '🐼', '🦁', '🐸', '🦋', '🐺', '🦅', '🐬', '🦄', '🐯', '🦉', '🐙'];
-  const avatar = avatars[count % avatars.length];
+  const avatar = role === 'admin' ? '❤️' : avatars[count % avatars.length];
 
   const [u] = await sql`
     INSERT INTO users (email, password_hash, name, role, avatar)
@@ -142,7 +142,9 @@ app.get('/users', requireAdmin, async (c) => {
   const sql = c.get('sql');
   const rows = await sql`
     SELECT id, email, name, avatar, role, created_at,
-      (SELECT count(*)::int FROM enrollments e WHERE e.user_id = users.id) AS path_count
+      (SELECT count(*)::int FROM enrollments e WHERE e.user_id = users.id) AS path_count,
+      (SELECT coalesce(json_agg(json_build_object('id', p.id, 'name', p.name) ORDER BY p.name), '[]'::json)
+         FROM enrollments e JOIN learning_paths p ON p.id = e.path_id WHERE e.user_id = users.id) AS paths
     FROM users
     ORDER BY CASE role WHEN 'admin' THEN 0 WHEN 'mentor' THEN 1 ELSE 2 END, name`;
   return c.json({ users: rows });
@@ -162,7 +164,7 @@ app.post('/users', requireAdmin, async (c) => {
   const existing = await sql`SELECT id FROM users WHERE email = ${email}`;
   if (existing[0]) return c.json({ error: 'An account with that email already exists.' }, 409);
   const hash = await bcrypt.hash(password, 10);
-  const avatar = role === 'mentor' ? '🧑‍🏫' : role === 'admin' ? '🦉' : '🙂';
+  const avatar = role === 'mentor' ? '🧑‍🏫' : role === 'admin' ? '❤️' : '🙂';
   const [u] = await sql`
     INSERT INTO users (email, password_hash, name, role, avatar)
     VALUES (${email}, ${hash}, ${name}, ${role}, ${avatar})
@@ -185,6 +187,26 @@ app.put('/users/:id/role', requireAdmin, async (c) => {
   const [u] = await sql`UPDATE users SET role = ${b.role} WHERE id = ${id} RETURNING id, email, name, avatar, role`;
   if (!u) return c.json({ error: 'User not found' }, 404);
   return c.json({ user: u });
+});
+
+// Admin resets a user's password.
+app.put('/users/:id/password', requireAdmin, async (c) => {
+  const sql = c.get('sql');
+  const id = Number(c.req.param('id'));
+  const b = await c.req.json().catch(() => ({}));
+  const password = String(b.password || '');
+  if (password.length < 6) return c.json({ error: 'Password must be at least 6 characters.' }, 400);
+  const hash = await bcrypt.hash(password, 10);
+  const [u] = await sql`UPDATE users SET password_hash = ${hash} WHERE id = ${id} RETURNING id`;
+  if (!u) return c.json({ error: 'User not found' }, 404);
+  return c.json({ ok: true });
+});
+
+// Admin removes a user from a learning path (deletes their enrollment; progress rows remain).
+app.delete('/users/:id/enrollments/:pathId', requireAdmin, async (c) => {
+  const sql = c.get('sql');
+  await sql`DELETE FROM enrollments WHERE user_id = ${Number(c.req.param('id'))} AND path_id = ${Number(c.req.param('pathId'))}`;
+  return c.json({ ok: true });
 });
 
 // =====================================================================
@@ -464,6 +486,70 @@ app.get('/paths/:id/members', requireAuth, async (c) => {
     WHERE e.path_id = ${id}
     ORDER BY u.name`;
   return c.json({ totals, members });
+});
+
+// Rich team dashboard data for any enrolled user: modules + per-member per-module progress
+// + recent activity. Powers the "Team Activity" tab (podium, module coverage, activity feed).
+app.get('/paths/:id/team', requireAuth, async (c) => {
+  const sql = c.get('sql');
+  const id = Number(c.req.param('id'));
+  const [path] = await sql`SELECT * FROM learning_paths WHERE id = ${id}`;
+  if (!path) return c.json({ error: 'Path not found' }, 404);
+  const modules = await sql`
+    SELECT m.id, m.name, m.icon, m.position,
+      (SELECT count(*)::int FROM topics t WHERE t.module_id = m.id) AS topic_total,
+      (SELECT count(*)::int FROM tasks tk JOIN topics t ON t.id = tk.topic_id WHERE t.module_id = m.id) AS task_total
+    FROM modules m WHERE m.path_id = ${id} ORDER BY m.position, m.id`;
+  const [{ deliverable_total }] = await sql`SELECT count(*)::int AS deliverable_total FROM deliverables WHERE path_id = ${id}`;
+  const memberRows = await sql`
+    SELECT u.id, u.name, u.email, u.avatar FROM users u JOIN enrollments e ON e.user_id = u.id
+    WHERE e.path_id = ${id} ORDER BY u.name`;
+  const topicByUserMod = await sql`
+    SELECT tp.user_id, t.module_id, count(*)::int AS c FROM topic_progress tp
+    JOIN topics t ON t.id = tp.topic_id JOIN modules m ON m.id = t.module_id
+    WHERE m.path_id = ${id} AND tp.done GROUP BY tp.user_id, t.module_id`;
+  const taskByUserMod = await sql`
+    SELECT tp.user_id, t.module_id, count(*)::int AS c FROM task_progress tp
+    JOIN tasks tk ON tk.id = tp.task_id JOIN topics t ON t.id = tk.topic_id JOIN modules m ON m.id = t.module_id
+    WHERE m.path_id = ${id} AND tp.done GROUP BY tp.user_id, t.module_id`;
+  const delivByUser = await sql`
+    SELECT dp.user_id, count(*)::int AS c FROM deliverable_progress dp
+    JOIN deliverables d ON d.id = dp.deliverable_id WHERE d.path_id = ${id} AND dp.done GROUP BY dp.user_id`;
+  const weekByUser = await sql`
+    SELECT user_id, count(*)::int AS c FROM activity
+    WHERE path_id = ${id} AND created_at > now() - interval '7 days' GROUP BY user_id`;
+  const activity = await sql`
+    SELECT a.user_id, u.name AS user_name, u.avatar AS user_avatar, a.type, a.detail, a.created_at
+    FROM activity a JOIN users u ON u.id = a.user_id
+    WHERE a.path_id = ${id} ORDER BY a.created_at DESC LIMIT 30`;
+
+  const tMap: any = {}, kMap: any = {}, dMap: any = {}, wMap: any = {};
+  for (const r of topicByUserMod) (tMap[r.user_id] ||= {})[r.module_id] = r.c;
+  for (const r of taskByUserMod) (kMap[r.user_id] ||= {})[r.module_id] = r.c;
+  for (const r of delivByUser) dMap[r.user_id] = r.c;
+  for (const r of weekByUser) wMap[r.user_id] = r.c;
+  const members = memberRows.map((u: any) => {
+    const perModule = modules.map((m: any) => ({
+      module_id: m.id,
+      topics_done: (tMap[u.id] && tMap[u.id][m.id]) || 0,
+      tasks_done: (kMap[u.id] && kMap[u.id][m.id]) || 0,
+    }));
+    return {
+      id: u.id, name: u.name, email: u.email, avatar: u.avatar,
+      topics_done: perModule.reduce((s: number, x: any) => s + x.topics_done, 0),
+      tasks_done: perModule.reduce((s: number, x: any) => s + x.tasks_done, 0),
+      deliverables_done: dMap[u.id] || 0,
+      week_count: wMap[u.id] || 0,
+      perModule,
+    };
+  });
+  const totals = {
+    modules: modules.length,
+    topics: modules.reduce((s: number, m: any) => s + m.topic_total, 0),
+    tasks: modules.reduce((s: number, m: any) => s + m.task_total, 0),
+    deliverables: deliverable_total,
+  };
+  return c.json({ path, totals, modules, members, activity });
 });
 
 // A specific member's detailed progress on a path (staff-only oversight, read-only).
