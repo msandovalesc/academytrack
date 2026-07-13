@@ -165,6 +165,8 @@ const state = {
   activity: null,
   team: null,           // rich team dashboard payload
   openModules: new Set(),
+  openTasks: new Set(),   // topic ids whose task list is expanded (persists across re-render)
+  celebrated: new Set(),  // module ids already celebrated (avoids repeat pop-ups)
   users: [],            // admin Users screen
   viewingMember: null,  // { user, done:{topics,tasks,deliverables} } read-only drill-down
 };
@@ -367,7 +369,10 @@ function deletePath(id) {
 async function openPath(id) {
   state.pathId = id;
   state.viewingMember = null;
+  state.openModules = new Set();
+  state.openTasks = new Set();
   await loadPath();
+  state.celebrated = new Set(completedModuleIds()); // already-complete modules never re-celebrate
   state.tab = isEnrolled() ? 'me' : 'leaderboard'; // mentors aren't enrolled -> oversight
   state.view = 'path';
   render();
@@ -456,6 +461,14 @@ function renderTrackerFor(body, subject) {
   const pct = totalAll ? Math.round(((topicsDone + tasksDone + delivDone) / totalAll) * 100) : 0;
   const lvl = getLevel(pct);
   const roStyle = ro ? ' style="cursor:default"' : '';
+  const modDone = (m) => m.topics.length > 0
+    && m.topics.every((t) => done.topics.has(t.id))
+    && m.topics.every((t) => t.tasks.every((tk) => done.tasks.has(tk.id)));
+
+  const badgesHtml = state.path.modules.map((m, mi) => {
+    const earned = modDone(m);
+    return `<div class="mod-badge ${earned ? 'earned' : ''}" title="${esc(m.name)}${earned ? ' — completed' : ''}"><span>${esc(m.icon || '📦')}</span><span class="mb-num">${twoDigit(mi)}</span></div>`;
+  }).join('');
 
   const modulesHtml = state.path.modules.map((m, mi) => {
     const total = m.topics.length;
@@ -465,9 +478,10 @@ function renderTrackerFor(body, subject) {
     const color = m.color || 'var(--blue)';
     const topicsHtml = m.topics.map((t) => {
       const tdone = done.topics.has(t.id);
+      const tasksOpen = state.openTasks.has(t.id);
       const tasksHtml = t.tasks.length ? `
-        <div class="exercise-toggle" onclick="toggleTasks(${t.id})">▸ ${t.tasks.length} task${t.tasks.length > 1 ? 's' : ''}</div>
-        <div class="exercise-group" id="tasks_${t.id}" style="display:none">
+        <div class="exercise-toggle" onclick="toggleTasks(${t.id})">${tasksOpen ? '▾' : '▸'} ${t.tasks.length} task${t.tasks.length > 1 ? 's' : ''}</div>
+        <div class="exercise-group" id="tasks_${t.id}" style="display:${tasksOpen ? 'block' : 'none'}">
           ${t.tasks.map((tk) => {
             const kd = done.tasks.has(tk.id);
             return `<div class="exercise-row ${kd ? 'done' : ''}">
@@ -523,6 +537,10 @@ function renderTrackerFor(body, subject) {
       </div>
     </div>
 
+    ${state.path.modules.length ? `
+      <div class="section-header" style="margin-top:20px"><span class="section-title">Module Badges</span></div>
+      <div class="mod-badges">${badgesHtml}</div>` : ''}
+
     <div class="stats-row">
       <div class="stat-card"><div class="stat-num" style="color:var(--green)">${topicsDone}</div><div class="stat-label">/ ${tot.topics} topics</div></div>
       <div class="stat-card"><div class="stat-num" style="color:var(--yellow)">${tasksDone}</div><div class="stat-label">/ ${tot.tasks} tasks</div></div>
@@ -560,6 +578,7 @@ async function viewMember(userId) {
       },
     };
     state.openModules = new Set();
+    state.openTasks = new Set();
     render();
   } catch (e) { toast(e.message, true); }
 }
@@ -585,22 +604,51 @@ function expandAll(open) {
   state.openModules = open ? new Set(state.path.modules.map((m) => m.id)) : new Set();
   renderTab();
 }
+// Expand/collapse a topic's task list. Persisted in state so a later re-render (e.g. after
+// checking a task) keeps it exactly as the learner left it — nothing auto-collapses.
 function toggleTasks(topicId) {
+  const nowOpen = !state.openTasks.has(topicId);
+  if (nowOpen) state.openTasks.add(topicId); else state.openTasks.delete(topicId);
   const el = document.getElementById('tasks_' + topicId);
-  if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+  if (el) {
+    el.style.display = nowOpen ? 'block' : 'none';
+    const tog = el.previousElementSibling;
+    if (tog && tog.classList.contains('exercise-toggle')) {
+      tog.textContent = (nowOpen ? '▾ ' : '▸ ') + tog.textContent.replace(/^[▸▾]\s*/, '');
+    }
+  }
+}
+
+// Module ids that are fully complete (all topics + all their tasks done) for the current user.
+function completedModuleIds() {
+  const ids = [];
+  for (const m of state.path.modules) {
+    if (!m.topics.length) continue;
+    const allTopics = m.topics.every((t) => state.done.topics.has(t.id));
+    const allTasks = m.topics.every((t) => t.tasks.every((tk) => state.done.tasks.has(tk.id)));
+    if (allTopics && allTasks) ids.push(m.id);
+  }
+  return ids;
 }
 
 // ---- optimistic progress toggles ----
 async function toggleGeneric(kind, id, apiPath, field) {
   const set = state.done[kind];
   const nowDone = !set.has(id);
+  const before = new Set(completedModuleIds()); // modules complete BEFORE this change
   if (nowDone) set.add(id); else set.delete(id);
   renderTab();
   try {
     await api('POST', apiPath, { [field]: id, done: nowDone });
     if (nowDone) {
       toast(MOTIVATIONAL[Math.floor(combinedPct() / 15) % MOTIVATIONAL.length]);
-      maybeCelebrateModule();
+      // Celebrate ONLY a module that just transitioned incomplete -> complete via this toggle.
+      const newlyComplete = completedModuleIds().find((mid) => !before.has(mid));
+      if (newlyComplete != null && !state.celebrated.has(newlyComplete)) {
+        state.celebrated.add(newlyComplete);
+        const mod = state.path.modules.find((m) => m.id === newlyComplete);
+        if (mod) showCongrats('Module complete!', `You finished "${mod.name}"`, `${mod.icon || '🏅'} ${mod.name}`);
+      }
     }
   } catch (e) {
     if (nowDone) set.delete(id); else set.add(id);
@@ -611,20 +659,6 @@ async function toggleGeneric(kind, id, apiPath, field) {
 const toggleTopic = (id) => toggleGeneric('topics', id, '/progress/topic', 'topic_id');
 const toggleTask = (id) => toggleGeneric('tasks', id, '/progress/task', 'task_id');
 const toggleDeliverable = (id) => toggleGeneric('deliverables', id, '/progress/deliverable', 'deliverable_id');
-
-function maybeCelebrateModule() {
-  for (const m of state.path.modules) {
-    if (!m.topics.length) continue;
-    const allTopics = m.topics.every((t) => state.done.topics.has(t.id));
-    const allTasks = m.topics.every((t) => t.tasks.every((tk) => state.done.tasks.has(tk.id)));
-    if (allTopics && allTasks && !state.openModules.has('celebrated_' + m.id)) {
-      // Celebrate once per session per module.
-      state.openModules.add('celebrated_' + m.id);
-      showCongrats('Module complete!', `You finished "${m.name}"`, `${m.icon || '🏅'} ${m.name}`);
-      return;
-    }
-  }
-}
 
 // ---- Leaderboard ----
 function memberPct(m) {

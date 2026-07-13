@@ -211,6 +211,12 @@ textarea.form-input{resize:vertical;min-height:70px}
 .dim{color:var(--text-dim)}
 .spinner{text-align:center;padding:60px;color:var(--text-muted)}
 
+/* Module badges (earned when a module is fully complete) */
+.mod-badges{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+.mod-badge{display:flex;align-items:center;gap:6px;padding:6px 10px;border-radius:8px;font-size:13px;font-weight:700;border:1px solid var(--border);background:var(--bg-elevated);color:var(--text-dim);transition:all .2s}
+.mod-badge .mb-num{font-family:monospace;font-size:11px}
+.mod-badge.earned{border-color:rgba(234,179,8,.45);background:rgba(234,179,8,.14);color:var(--yellow)}
+
 /* Team dashboard: podium, cards, activity */
 .podium{display:flex;align-items:flex-end;justify-content:center;gap:12px;padding:20px 0 0;margin-bottom:8px}
 .podium-step{text-align:center;border-radius:var(--radius) var(--radius) 0 0;padding:20px 16px 16px;position:relative}
