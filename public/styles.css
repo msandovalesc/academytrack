@@ -217,6 +217,11 @@ textarea.form-input{resize:vertical;min-height:70px}
 .mod-badge .mb-num{font-family:monospace;font-size:11px}
 .mod-badge.earned{border-color:rgba(234,179,8,.45);background:rgba(234,179,8,.14);color:var(--yellow)}
 
+/* Quiz taking */
+.quiz-opt{display:flex;align-items:flex-start;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px;font-size:13px;cursor:pointer;transition:border-color .15s}
+.quiz-opt:hover{border-color:var(--blue-border)}
+.quiz-opt input{margin-top:2px;flex-shrink:0}
+
 /* Team dashboard: podium, cards, activity */
 .podium{display:flex;align-items:flex-end;justify-content:center;gap:12px;padding:20px 0 0;margin-bottom:8px}
 .podium-step{text-align:center;border-radius:var(--radius) var(--radius) 0 0;padding:20px 16px 16px;position:relative}

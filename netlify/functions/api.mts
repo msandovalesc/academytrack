@@ -257,6 +257,17 @@ app.get('/paths/:id', requireAuth, async (c) => {
   }
   for (const m of modules) m.topics = topicsByModule[m.id] || [];
 
+  // Quizzes per module, with question count + this user's latest attempt.
+  const quizzes = await sql`
+    SELECT q.id, q.module_id, q.title, q.position,
+      (SELECT count(*)::int FROM quiz_questions qq WHERE qq.quiz_id = q.id) AS question_count,
+      (SELECT row_to_json(a) FROM (SELECT score, total, passed FROM quiz_attempts WHERE quiz_id = q.id AND user_id = ${uid}) a) AS attempt
+    FROM quizzes q JOIN modules m ON m.id = q.module_id
+    WHERE m.path_id = ${id} ORDER BY q.position, q.id`;
+  const quizzesByModule: Record<number, any[]> = {};
+  for (const q of quizzes) (quizzesByModule[q.module_id] ||= []).push(q);
+  for (const m of modules) m.quizzes = quizzesByModule[m.id] || [];
+
   const doneTopics = await sql`
     SELECT tp.topic_id FROM topic_progress tp
     JOIN topics t ON t.id = tp.topic_id JOIN modules m ON m.id = t.module_id
@@ -445,6 +456,114 @@ app.put('/deliverables/:id', requireAdmin, async (c) => {
 app.delete('/deliverables/:id', requireAdmin, async (c) => {
   const sql = c.get('sql');
   await sql`DELETE FROM deliverables WHERE id = ${Number(c.req.param('id'))}`;
+  return c.json({ ok: true });
+});
+
+// =====================================================================
+// QUIZZES
+// =====================================================================
+
+// Full quiz for taking. Learners get options WITHOUT the answer key; admins get is_correct.
+app.get('/quizzes/:id', requireAuth, async (c) => {
+  const sql = c.get('sql');
+  const id = Number(c.req.param('id'));
+  const isAdmin = c.get('user')!.role === 'admin';
+  const [quiz] = await sql`SELECT id, module_id, title FROM quizzes WHERE id = ${id}`;
+  if (!quiz) return c.json({ error: 'Quiz not found' }, 404);
+  const questions = await sql`SELECT id, text, position FROM quiz_questions WHERE quiz_id = ${id} ORDER BY position, id`;
+  const options = await sql`
+    SELECT o.id, o.question_id, o.text, o.position, o.is_correct
+    FROM quiz_options o JOIN quiz_questions q ON q.id = o.question_id
+    WHERE q.quiz_id = ${id} ORDER BY o.position, o.id`;
+  const byQ: Record<number, any[]> = {};
+  for (const o of options) {
+    (byQ[o.question_id] ||= []).push(isAdmin ? o : { id: o.id, question_id: o.question_id, text: o.text, position: o.position });
+  }
+  for (const q of questions) q.options = byQ[q.id] || [];
+  return c.json({ quiz, questions });
+});
+
+// Submit answers; scored server-side; latest attempt saved. Returns per-question correctness.
+app.post('/quizzes/:id/submit', requireAuth, async (c) => {
+  const sql = c.get('sql');
+  const uid = c.get('user')!.id;
+  const id = Number(c.req.param('id'));
+  const body = await c.req.json().catch(() => ({}));
+  const answers = body.answers || {}; // { questionId: optionId }
+  const [quiz] = await sql`SELECT id FROM quizzes WHERE id = ${id}`;
+  if (!quiz) return c.json({ error: 'Quiz not found' }, 404);
+  const questions = await sql`SELECT id FROM quiz_questions WHERE quiz_id = ${id}`;
+  const correctRows = await sql`
+    SELECT o.question_id, o.id AS option_id FROM quiz_options o
+    JOIN quiz_questions q ON q.id = o.question_id
+    WHERE q.quiz_id = ${id} AND o.is_correct`;
+  const correctByQ: Record<number, number[]> = {};
+  for (const r of correctRows) (correctByQ[r.question_id] ||= []).push(r.option_id);
+
+  let score = 0;
+  const results = questions.map((q: any) => {
+    const chosen = Number(answers[q.id]);
+    const correctIds = correctByQ[q.id] || [];
+    const correct = correctIds.includes(chosen);
+    if (correct) score++;
+    return { question_id: q.id, chosen_option_id: chosen || null, correct_option_ids: correctIds, correct };
+  });
+  const total = questions.length;
+  const passed = total > 0 && score / total >= 0.7;
+  await sql`
+    INSERT INTO quiz_attempts (user_id, quiz_id, score, total, passed, updated_at)
+    VALUES (${uid}, ${id}, ${score}, ${total}, ${passed}, now())
+    ON CONFLICT (user_id, quiz_id) DO UPDATE SET score = ${score}, total = ${total}, passed = ${passed}, updated_at = now()`;
+  return c.json({ score, total, passed, results });
+});
+
+// ---- Quiz authoring (admin) ----
+app.post('/modules/:id/quizzes', requireAdmin, async (c) => {
+  const sql = c.get('sql');
+  const moduleId = Number(c.req.param('id'));
+  const b = await c.req.json().catch(() => ({}));
+  if (!b.title) return c.json({ error: 'Title is required' }, 400);
+  const [{ next }] = await sql`SELECT COALESCE(max(position) + 1, 0)::int AS next FROM quizzes WHERE module_id = ${moduleId}`;
+  const [q] = await sql`INSERT INTO quizzes (module_id, position, title) VALUES (${moduleId}, ${b.position ?? next}, ${b.title}) RETURNING *`;
+  return c.json({ quiz: q });
+});
+
+app.put('/quizzes/:id', requireAdmin, async (c) => {
+  const sql = c.get('sql');
+  const b = await c.req.json().catch(() => ({}));
+  const [q] = await sql`UPDATE quizzes SET title = COALESCE(${b.title ?? null}, title) WHERE id = ${Number(c.req.param('id'))} RETURNING *`;
+  if (!q) return c.json({ error: 'Quiz not found' }, 404);
+  return c.json({ quiz: q });
+});
+
+app.delete('/quizzes/:id', requireAdmin, async (c) => {
+  const sql = c.get('sql');
+  await sql`DELETE FROM quizzes WHERE id = ${Number(c.req.param('id'))}`;
+  return c.json({ ok: true });
+});
+
+// Create a question with its options in one call. options: [{ text, is_correct }]
+app.post('/quizzes/:id/questions', requireAdmin, async (c) => {
+  const sql = c.get('sql');
+  const quizId = Number(c.req.param('id'));
+  const b = await c.req.json().catch(() => ({}));
+  const text = String(b.text || '').trim();
+  const options = Array.isArray(b.options) ? b.options.filter((o: any) => String(o.text || '').trim()) : [];
+  if (!text) return c.json({ error: 'Question text is required' }, 400);
+  if (options.length < 2) return c.json({ error: 'At least 2 options are required' }, 400);
+  if (!options.some((o: any) => o.is_correct)) return c.json({ error: 'Mark at least one correct option' }, 400);
+  const [{ next }] = await sql`SELECT COALESCE(max(position) + 1, 0)::int AS next FROM quiz_questions WHERE quiz_id = ${quizId}`;
+  const [q] = await sql`INSERT INTO quiz_questions (quiz_id, position, text) VALUES (${quizId}, ${next}, ${text}) RETURNING *`;
+  for (let i = 0; i < options.length; i++) {
+    await sql`INSERT INTO quiz_options (question_id, position, text, is_correct)
+      VALUES (${q.id}, ${i}, ${String(options[i].text).trim()}, ${!!options[i].is_correct})`;
+  }
+  return c.json({ question: q });
+});
+
+app.delete('/quiz-questions/:id', requireAdmin, async (c) => {
+  const sql = c.get('sql');
+  await sql`DELETE FROM quiz_questions WHERE id = ${Number(c.req.param('id'))}`;
   return c.json({ ok: true });
 });
 
