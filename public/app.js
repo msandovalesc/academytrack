@@ -489,15 +489,32 @@ function renderTrackerFor(body, subject) {
               <div class="exercise-text">${esc(tk.description)}</div></div>`;
           }).join('')}
         </div>` : '';
+      const link = t.link ? ` <a href="${esc(t.link)}" target="_blank" rel="noopener" title="Open resource" onclick="event.stopPropagation()" style="color:var(--blue-light);text-decoration:none">↗</a>` : '';
       return `
         <div class="topic-row ${tdone ? 'done' : ''}">
           <div class="topic-check ${tdone ? 'done' : ''}"${ro ? roStyle : ` onclick="toggleTopic(${t.id})"`}></div>
           <div class="topic-info">
-            <div class="topic-name">${esc(t.name)}</div>
+            <div class="topic-name">${esc(t.name)}${link}</div>
             ${tasksHtml}
           </div>
         </div>`;
     }).join('');
+
+    const quizzesHtml = (m.quizzes && m.quizzes.length) ? `
+      <div style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--border)">
+        ${m.quizzes.map((q) => {
+          const a = q.attempt;
+          const status = a
+            ? `<span style="color:${a.passed ? 'var(--green)' : 'var(--yellow)'};font-weight:600">${a.score}/${a.total} ${a.passed ? '✓ passed' : '· keep trying'}</span>`
+            : '<span class="dim">not attempted</span>';
+          return `<div style="display:flex;align-items:center;gap:10px;padding:6px 0">
+            <span style="font-size:16px">📝</span>
+            <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600">${esc(q.title)}</div>
+              <div style="font-size:11px;color:var(--text-muted)">${q.question_count} question${q.question_count !== 1 ? 's' : ''} · ${status}</div></div>
+            ${ro || !q.question_count ? '' : `<button class="btn btn-outline btn-sm" onclick="openQuiz(${q.id})">${a ? 'Retake' : 'Take quiz'}</button>`}
+          </div>`;
+        }).join('')}
+      </div>` : '';
 
     return `
       <div class="module-section ${open ? 'open' : ''}" id="mod_${m.id}">
@@ -510,6 +527,7 @@ function renderTrackerFor(body, subject) {
         </div>
         <div class="module-body">
           ${topicsHtml || '<div class="dim" style="padding:8px 0;font-size:13px">No topics yet.</div>'}
+          ${quizzesHtml}
         </div>
       </div>`;
   }).join('');
@@ -849,11 +867,19 @@ function renderAdmin(app) {
         <h3>${esc(m.icon || '📦')} ${esc(m.name)}
           <span style="margin-left:auto;display:flex;gap:6px">
             <button class="icon-btn" onclick="addTopic(${m.id})">+ topic</button>
+            <button class="icon-btn" onclick="addQuiz(${m.id})">+ quiz</button>
             <button class="icon-btn" onclick="editModule(${m.id})">✎</button>
             <button class="icon-btn danger" onclick="delModule(${m.id})">🗑</button>
           </span>
         </h3>
         <div class="nested">${topics || '<div class="dim" style="font-size:12px;padding:4px 0">No topics.</div>'}</div>
+        ${(m.quizzes && m.quizzes.length) ? `<div class="nested" style="margin-top:8px">${m.quizzes.map((q) => `
+          <div class="edit-row">
+            <span class="grip">📝</span>
+            <span class="label">${esc(q.title)} <span class="dim">(${q.question_count} q)</span></span>
+            <button class="icon-btn" onclick="manageQuiz(${q.id})">questions</button>
+            <button class="icon-btn danger" onclick="delQuiz(${q.id})">🗑</button>
+          </div>`).join('')}</div>` : ''}
       </div>`;
   }).join('');
 
@@ -1200,6 +1226,124 @@ function buildReportHtml(data) {
 </html>`;
 }
 
+// ---------------------------------------------------------------- QUIZ TAKING (learner)
+async function openQuiz(id) {
+  openModal('<div class="spinner">Loading quiz…</div>');
+  try {
+    const { quiz, questions } = await api('GET', `/quizzes/${id}`);
+    state._quiz = { quiz, questions };
+    const qs = questions.map((q, qi) => `
+      <div class="quiz-q" data-qid="${q.id}" style="margin-bottom:16px">
+        <div style="font-weight:600;font-size:14px;margin-bottom:8px">${qi + 1}. ${esc(q.text)}</div>
+        ${q.options.map((o) => `<label class="quiz-opt"><input type="radio" name="q_${q.id}" value="${o.id}"><span>${esc(o.text)}</span></label>`).join('')}
+      </div>`).join('');
+    openModal(`
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <h2 style="margin:0">${esc(quiz.title)}</h2>
+        <button class="btn btn-outline btn-sm" onclick="closeModal()">Close</button>
+      </div>
+      <div id="quizBody" style="max-height:60vh;overflow:auto">${qs || '<div class="dim">This quiz has no questions yet.</div>'}</div>
+      <div class="form-error" id="quizErr"></div>
+      <div class="form-actions">${questions.length ? '<button class="btn btn-primary" id="quizSubmit">Submit answers</button>' : ''}</div>`);
+    const btn = document.getElementById('quizSubmit');
+    if (btn) btn.onclick = () => submitQuiz(quiz.id);
+  } catch (e) { closeModal(); toast(e.message, true); }
+}
+
+async function submitQuiz(id) {
+  const answers = {};
+  document.querySelectorAll('#quizBody .quiz-q').forEach((qEl) => {
+    const sel = qEl.querySelector('input[type=radio]:checked');
+    if (sel) answers[qEl.getAttribute('data-qid')] = Number(sel.value);
+  });
+  const btn = document.getElementById('quizSubmit');
+  if (btn) btn.disabled = true;
+  try {
+    const res = await api('POST', `/quizzes/${id}/submit`, { answers });
+    const { quiz, questions } = state._quiz;
+    const byQ = {}; res.results.forEach((r) => (byQ[r.question_id] = r));
+    const qs = questions.map((q, qi) => {
+      const r = byQ[q.id] || { correct_option_ids: [], chosen_option_id: null, correct: false };
+      const opts = q.options.map((o) => {
+        const chosen = r.chosen_option_id === o.id, correct = r.correct_option_ids.includes(o.id);
+        const col = correct ? 'var(--green)' : (chosen ? 'var(--red)' : 'var(--text-muted)');
+        return `<div style="font-size:13px;color:${col};padding:2px 0">${correct ? '✓' : (chosen ? '✗' : '•')} ${esc(o.text)}</div>`;
+      }).join('');
+      return `<div style="margin-bottom:14px"><div style="font-weight:600;font-size:14px;margin-bottom:4px">${qi + 1}. ${esc(q.text)} ${r.correct ? '<span style="color:var(--green)">✓</span>' : '<span style="color:var(--red)">✗</span>'}</div>${opts}</div>`;
+    }).join('');
+    openModal(`
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+        <h2 style="margin:0">${esc(quiz.title)} — Result</h2>
+        <button class="btn btn-outline btn-sm" onclick="closeModal()">Close</button>
+      </div>
+      <div style="font-size:20px;font-weight:800;margin-bottom:12px;color:${res.passed ? 'var(--green)' : 'var(--yellow)'}">${res.score} / ${res.total} ${res.passed ? '· Passed 🎉' : '· Keep practicing'}</div>
+      <div style="max-height:52vh;overflow:auto">${qs}</div>
+      <div class="form-actions"><button class="btn btn-outline btn-sm" onclick="openQuiz(${id})">Retake</button><button class="btn btn-primary btn-sm" onclick="closeModal()">Done</button></div>`);
+    await loadPath(); if (state.tab === 'me' && !state.viewingMember) renderTab();
+  } catch (e) { const el = document.getElementById('quizErr'); if (el) el.textContent = e.message; if (btn) btn.disabled = false; }
+}
+
+// ---------------------------------------------------------------- QUIZ AUTHORING (admin)
+function addQuiz(moduleId) {
+  formModal({ title: 'New quiz', fields: [{ name: 'title', label: 'Quiz title', required: true, placeholder: 'e.g. Module 1.5 Quiz' }],
+    submitLabel: 'Create quiz', onSubmit: async (v) => { await api('POST', `/modules/${moduleId}/quizzes`, v); toast('Quiz created.'); await reloadAdmin(); } });
+}
+function delQuiz(id) {
+  confirmModal('Delete quiz', 'Delete this quiz and all its questions?', 'Delete',
+    async () => { await api('DELETE', `/quizzes/${id}`); toast('Deleted.'); await reloadAdmin(); });
+}
+async function manageQuiz(id) {
+  openModal('<div class="spinner">Loading…</div>');
+  try {
+    const { quiz, questions } = await api('GET', `/quizzes/${id}`);
+    const list = questions.map((q, qi) => `
+      <div class="edit-row" style="align-items:flex-start">
+        <span class="grip">${qi + 1}</span>
+        <span class="label"><div>${esc(q.text)}</div>
+          <div style="margin-top:2px">${q.options.map((o) => `<span style="font-size:12px;color:${o.is_correct ? 'var(--green)' : 'var(--text-dim)'}">${o.is_correct ? '✓' : '•'} ${esc(o.text)}</span>`).join(' &nbsp; ')}</div>
+        </span>
+        <button class="icon-btn danger" onclick="delQuestion(${q.id}, ${id})">🗑</button>
+      </div>`).join('');
+    openModal(`
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <h2 style="margin:0">${esc(quiz.title)}</h2>
+        <button class="btn btn-outline btn-sm" onclick="closeModal()">Close</button>
+      </div>
+      <div style="max-height:45vh;overflow:auto">${list || '<div class="dim" style="font-size:13px">No questions yet.</div>'}</div>
+      <div class="form-actions"><button class="btn btn-primary btn-sm" onclick="addQuestion(${id})">+ Add question</button></div>`);
+  } catch (e) { closeModal(); toast(e.message, true); }
+}
+function addQuestion(quizId) {
+  const rows = [0, 1, 2, 3].map((i) => `
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+      <input type="radio" name="correct" value="${i}" ${i === 0 ? 'checked' : ''} title="Mark correct">
+      <input class="form-input" id="opt_${i}" placeholder="Option ${i + 1}${i < 2 ? ' (required)' : ' (optional)'}" style="flex:1">
+    </div>`).join('');
+  openModal(`
+    <h2>New question</h2>
+    <div class="form-group"><label class="form-label">Question</label><textarea class="form-input" id="q_text" placeholder="Question text"></textarea></div>
+    <label class="form-label">Options (select the correct one)</label>
+    ${rows}
+    <div class="form-error" id="modalErr"></div>
+    <div class="form-actions"><button class="btn btn-outline" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="modalSubmit">Add question</button></div>`);
+  document.getElementById('modalSubmit').onclick = async () => {
+    const text = document.getElementById('q_text').value.trim();
+    const correctIdx = Number((document.querySelector('input[name=correct]:checked') || {}).value);
+    const options = [0, 1, 2, 3].map((i) => ({ text: document.getElementById('opt_' + i).value.trim(), is_correct: i === correctIdx })).filter((o) => o.text);
+    const err = document.getElementById('modalErr');
+    if (!text) { err.textContent = 'Question text is required.'; return; }
+    if (options.length < 2) { err.textContent = 'Add at least 2 options.'; return; }
+    if (!options.some((o) => o.is_correct)) { err.textContent = 'The correct option must have text.'; return; }
+    const btn = document.getElementById('modalSubmit'); btn.disabled = true;
+    try { await api('POST', `/quizzes/${quizId}/questions`, { text, options }); toast('Question added.'); manageQuiz(quizId); }
+    catch (e) { err.textContent = e.message; btn.disabled = false; }
+  };
+}
+function delQuestion(id, quizId) {
+  confirmModal('Delete question', 'Delete this question?', 'Delete',
+    async () => { await api('DELETE', `/quiz-questions/${id}`); toast('Deleted.'); manageQuiz(quizId); });
+}
+
 // expose handlers used via inline onclick
 Object.assign(window, {
   toggleAuthMode, logout, goPaths, openPath, enroll, unenroll, newPath, editPath, deletePath,
@@ -1208,6 +1352,7 @@ Object.assign(window, {
   addTask, editTask, delTask, addDeliv, editDeliv, delDeliv, closeModal, closeCongrats,
   goUsers, addMentor, changeRole, viewMember, closeMember, openReport, openReportTab, copyReport,
   resetPassword, removeFromPath,
+  openQuiz, submitQuiz, addQuiz, delQuiz, manageQuiz, addQuestion, delQuestion,
 });
 
 boot();

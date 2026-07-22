@@ -38,7 +38,8 @@ CREATE TABLE IF NOT EXISTS topics (
   id        SERIAL PRIMARY KEY,
   module_id INTEGER NOT NULL REFERENCES modules(id) ON DELETE CASCADE,
   position  INTEGER NOT NULL DEFAULT 0,
-  name      TEXT NOT NULL
+  name      TEXT NOT NULL,
+  link      TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_topics_module ON topics(module_id);
 
@@ -106,3 +107,40 @@ CREATE TABLE IF NOT EXISTS activity (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_activity_path ON activity(path_id, created_at DESC);
+
+-- ---------- Quizzes (attached to a module) ----------
+CREATE TABLE IF NOT EXISTS quizzes (
+  id        SERIAL PRIMARY KEY,
+  module_id INTEGER NOT NULL REFERENCES modules(id) ON DELETE CASCADE,
+  position  INTEGER NOT NULL DEFAULT 0,
+  title     TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_quizzes_module ON quizzes(module_id);
+
+CREATE TABLE IF NOT EXISTS quiz_questions (
+  id       SERIAL PRIMARY KEY,
+  quiz_id  INTEGER NOT NULL REFERENCES quizzes(id) ON DELETE CASCADE,
+  position INTEGER NOT NULL DEFAULT 0,
+  text     TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_quiz_questions_quiz ON quiz_questions(quiz_id);
+
+CREATE TABLE IF NOT EXISTS quiz_options (
+  id          SERIAL PRIMARY KEY,
+  question_id INTEGER NOT NULL REFERENCES quiz_questions(id) ON DELETE CASCADE,
+  position    INTEGER NOT NULL DEFAULT 0,
+  text        TEXT NOT NULL,
+  is_correct  BOOLEAN NOT NULL DEFAULT false
+);
+CREATE INDEX IF NOT EXISTS idx_quiz_options_question ON quiz_options(question_id);
+
+-- Latest quiz result per user per quiz
+CREATE TABLE IF NOT EXISTS quiz_attempts (
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  quiz_id    INTEGER NOT NULL REFERENCES quizzes(id) ON DELETE CASCADE,
+  score      INTEGER NOT NULL DEFAULT 0,
+  total      INTEGER NOT NULL DEFAULT 0,
+  passed     BOOLEAN NOT NULL DEFAULT false,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, quiz_id)
+);
